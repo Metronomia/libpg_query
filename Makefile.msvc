@@ -2,6 +2,9 @@
 
 TARGET = pg_query
 ARLIB = $(TARGET).lib
+SOLIB = lib$(TARGET).dll
+PWSH_EXE = pwsh.exe
+GENERATE_DEF_SCRIPT = generate_def.ps1
 
 SRC_FILES = src/*.c src/postgres/*.c vendor/protobuf-c/protobuf-c.c vendor/xxhash/xxhash.c protobuf/pg_query.pb-c.c
 
@@ -13,15 +16,26 @@ all: examples test build
 
 build: $(ARLIB)
 
+build_shared: $(SOLIB)
+
 clean:
-	$(RM) *.obj
-	$(RM) pg_query.lib
+	if exist *.obj $(RM) *.obj
+	if exist libpg_query.lib $(RM) pg_query.lib
+	if exist libpg_query.dll $(RM) pg_query.dll
+        if exist libpg_query.exp $(RM) pg_query.exp
+
+create_def:
+	$(PWSH_EXE) $(GENERATE_DEF_SCRIPT)
 
 .PHONY: all clean build build_shared extract_source examples test install
 
 $(ARLIB): clean $(SRC_FILES)
 	$(CC) $(CFLAGS) /c $(SRC_FILES)
     lib /OUT:pg_query.lib *.obj
+
+$(SOLIB): clean create_def $(SRC_FILES)
+	$(CC) $(CFLAGS) /c $(SRC_FILES)
+	link /DLL /DEF:pg_query.def /OUT:$(SOLIB) *.obj
 
 EXAMPLES = examples/simple examples/scan examples/normalize examples/simple_error examples/normalize_error examples/simple_plpgsql
 examples: $(EXAMPLES)
