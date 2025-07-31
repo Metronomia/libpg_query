@@ -5,7 +5,7 @@ ARLIB = $(TARGET).lib
 SOLIB = lib$(TARGET).dll
 DEF = $(TARGET).def
 PWSH_EXE = pwsh.exe
-GENERATE_DEF_SCRIPT = generate_def.ps1
+GENERATE_DEF_SCRIPT = scripts/generate_def.ps1
 
 SRC_FILES = src/*.c src/postgres/*.c vendor/protobuf-c/protobuf-c.c vendor/xxhash/xxhash.c protobuf/pg_query.pb-c.c
 
