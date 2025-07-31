@@ -28,7 +28,7 @@ clean:
 create_def:
 	$(PWSH_EXE) $(GENERATE_DEF_SCRIPT)
 
-.PHONY: all clean build build_shared extract_source examples test install
+.PHONY: all clean build build_shared extract_source examples test install create_def
 
 $(ARLIB): clean $(SRC_FILES)
 	$(CC) $(CFLAGS) /c $(SRC_FILES)
