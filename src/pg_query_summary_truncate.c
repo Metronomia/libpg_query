@@ -287,16 +287,19 @@ global_replace(char *str, char *pattern, char *replacement)
 {
 	size_t		plen = strlen(pattern);
 	size_t		rlen = strlen(replacement);
+	char	   *s = str;
 
-	for (size_t i = 0; i < strlen(str); i++)
+	Assert(plen >= rlen);
+
+	while ((s = strstr(s, pattern)) != NULL)
 	{
-		if (memcmp(str + i, pattern, plen) == 0)
-		{
-			size_t		len = strlen(str + i + plen);
+		memcpy(s, replacement, rlen);
 
-			memcpy(str + i, replacement, rlen);
-			memmove(str + i + rlen, str + i + plen, len + 1);
-		}
+		/* Shift remainder of the string if needed */
+		if (plen > rlen)
+			memmove(s + rlen, s + plen, strlen(s + plen) + 1);
+
+		s += rlen;
 	}
 }
 
