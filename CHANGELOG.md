@@ -4,11 +4,11 @@ All versions are tagged by the major Postgres version, plus an individual semver
 
 ## 17-6.2.1   2026-01-14
 
-* Add statement check function (pg_query_is_utility_stmt) [#313](https://github.com/pganalyze/libpg_query/pull/313)
-  - This returns whether a raw statement is a utility statement
+* Add pg_query_is_utility_stmt function to determine if query text contains utility statements [#313](https://github.com/pganalyze/libpg_query/pull/313)
+  * This is a fast check for callers that don't actually need the parse tree itself
 * Add missing top-level postgres_deparse.h in Makefile install step
   - This was an oversight from the previous 6.2.0 release
-* Summary:
+* Improve pg_query_summary function:
   - Speed up summary truncate replacement logic
   - Correctly handle `GRANT .. ON ALL TABLES IN SCHEMA` statements
   - Correctly handle schema qualified filter columns
