@@ -6,6 +6,10 @@ postgres.tar.bz2
 *.obj
 pg_query.lib
 
+*.dylib
+*.so
+*.dll
+
 examples/*
 !examples/*.c
 
