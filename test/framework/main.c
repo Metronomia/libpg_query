@@ -12,6 +12,16 @@
 const size_t ARBITRARY_LENGTH_LIMIT = 500;
 
 int
+TEST_INIT_impl(TestState * test_state, const char *func, size_t line)
+{
+    if ((test_state->wanted_test != NULL) && (strcmp(test_state->wanted_test, func) != 0))
+        return 1;
+
+    printf("%s (line %li)\n", func, line);
+    return 0;
+}
+
+int
 TEST_BOUNDED_STRCMP(char *s1, char *s2)
 {
 	/*
@@ -25,6 +35,18 @@ TEST_BOUNDED_STRCMP(char *s1, char *s2)
 }
 
 /*
+ * Assert that `actual` is NULL.
+ */
+void
+TEST_ASSERT_NULL_impl(TestState * test_state, char *actual_str, void *actual)
+{
+	if (actual == NULL)
+		TEST_PASS();
+	else
+		TEST_FAIL("  FAIL: expected %s to be NULL\n", actual_str);
+}
+
+/*
  * Assert that `actual` is a string containing the same text as `expected`.
  * (This is wrapped by the TEST_ASSERT_STR_EQUAL macro.)
  */
@@ -35,7 +57,9 @@ TEST_ASSERT_STR_EQUAL_impl(TestState * test_state, char *actual_str, char *actua
 		test_state->passed++;
 	else
 	{
-		printf("  FAIL: expected %s to be '%s', but got '%s'\n\n", actual_str, expected, actual);
+		printf("  FAIL: Expected `actual` (%s) and `expected` to be equivalent.\n", actual_str);
+		printf("      actual: %s\n", actual);
+		printf("    expected: %s\n\n", expected);
 		test_state->failed++;
 	}
 }
@@ -164,18 +188,54 @@ TEST_ASSERT_LIST_EQUAL_impl(TestState * test_state, char *actual_str, List *actu
 	free(exp_ary);
 }
 
+// Given a list of tests, cleanup function, and use_mctx,
+// run tests and return the results.
+//
+// If `use_mctx` is true, a Postgres MemoryContext is entered before the test is run,
+// and exited after the cleanup function is called.
+//
+// This function exists so test_run() and test_run_with_mctx() can share an
+// implementation.
+static
 int
-test_run(TestFn * tests[], TestCleanupFn * test_cleanup)
+test_run_impl(int argc, char *argv[], TestFn * tests[], TestCleanupFn * test_cleanup, bool use_mctx)
 {
 	TestState	test_state = {0};
+
+	bool fail_fast = false;
+
+	for (size_t i = 1; i < argc; i++)
+	{
+		// This loop only runs if an argument was passed.
+		// That argument will be -ff or a test name, and in both
+		// cases we want to fail fast.
+		fail_fast = true;
+
+		// If the argument isn't -ff, we assume it's a test name.
+		if (strncmp(argv[i], "-ff", 4) != 0) {
+			test_state.wanted_test = argv[i];
+			break;
+		}
+	}
+
 
 	pg_query_init();
 
 	for (size_t i = 0; tests[i] != NULL; i++)
 	{
+		MemoryContext ctx;
+		if (use_mctx)
+			ctx = pg_query_enter_memory_context();
+
 		tests[i] (&test_state);
 		if (test_cleanup != NULL)
 			test_cleanup();
+
+		if (use_mctx)
+			pg_query_exit_memory_context(ctx);
+
+		if (fail_fast && test_state.failed > 0)
+			break;
 	}
 
 	bool		failed = (test_state.failed > 0);
@@ -188,26 +248,13 @@ test_run(TestFn * tests[], TestCleanupFn * test_cleanup)
 }
 
 int
-test_run_with_mcxt(TestFn * tests[], TestCleanupFn * test_cleanup)
+test_run(int argc, char *argv[], TestFn * tests[], TestCleanupFn * test_cleanup)
 {
-	TestState	test_state = {0};
+	return test_run_impl(argc, argv, tests, test_cleanup, false);
+}
 
-	pg_query_init();
-
-	for (size_t i = 0; tests[i] != NULL; i++)
-	{
-		MemoryContext ctx = pg_query_enter_memory_context();
-		tests[i] (&test_state);
-		if (test_cleanup != NULL)
-			test_cleanup();
-		pg_query_exit_memory_context(ctx);
-	}
-
-	bool		failed = (test_state.failed > 0);
-
-	printf("\ntest result: %s. %li passed; %li failed; %li skipped\n", failed ? "FAILED" : "ok", test_state.passed, test_state.failed, test_state.skipped);
-
-	pg_query_exit();
-
-	return failed ? EXIT_FAILURE : EXIT_SUCCESS;
+int
+test_run_with_mcxt(int argc, char *argv[], TestFn * tests[], TestCleanupFn * test_cleanup)
+{
+	return test_run_impl(argc, argv, tests, test_cleanup, true);
 }

@@ -8,7 +8,7 @@ void it_parses_simple_query(TestState* test_state) {
 	TEST_ASSERT_LIST_LENGTH(result.cte_names, 0);
 	TEST_ASSERT_LIST_LENGTH(result.functions, 0);
 	TEST_ASSERT_LIST_LENGTH(result.filter_columns, 1);
-	// UNIMPLEMENTED(truncated_query): assert_eq!(result.truncated_query.is_none(), true);
+	TEST_ASSERT_NULL(result.truncated_query);
 	TEST_ASSERT_LIST_EQUAL(result.statement_types, list_make1("SelectStmt"));
 }
 
@@ -23,7 +23,7 @@ void it_parses_simple_query_with_alias(TestState* test_state) {
 	TEST_ASSERT_LIST_LENGTH(result.cte_names, 0);
 	TEST_ASSERT_LIST_LENGTH(result.functions, 0);
 	TEST_ASSERT_LIST_LENGTH(result.filter_columns, 1);
-	// UNIMPLEMENTED(truncated_query): assert_eq!(result.truncated_query.is_none(), true);
+	TEST_ASSERT_NULL(result.truncated_query);
 	TEST_ASSERT_LIST_EQUAL(result.statement_types, list_make1("SelectStmt"));
 }
 
@@ -65,7 +65,7 @@ void it_handles_basic_query(TestState* test_state) {
 	TEST_ASSERT_LIST_LENGTH(result.cte_names, 0);
 	TEST_ASSERT_LIST_LENGTH(result.functions, 0);
 	TEST_ASSERT_LIST_LENGTH(result.filter_columns, 0);
-	// UNIMPLEMENTED(truncated_query): assert_eq!(result.truncated_query, None);
+	TEST_ASSERT_NULL(result.truncated_query);
 }
 
 void it_handles_join_expression(TestState* test_state) {
@@ -121,7 +121,7 @@ void it_parses_empty_queries(TestState* test_state) {
 	TEST_ASSERT_LIST_LENGTH(result.cte_names, 0);
 	TEST_ASSERT_LIST_LENGTH(result.functions, 0);
 	TEST_ASSERT_LIST_LENGTH(result.filter_columns, 0);
-	// UNIMPLEMENTED(truncated_query): assert_eq!(result.truncated_query.is_none(), true);
+	TEST_ASSERT_NULL(result.truncated_query);
 }
 
 void it_parses_floats_with_leading_dot(TestState* test_state) {
@@ -195,6 +195,20 @@ void it_parses_VACUUM(TestState* test_state) {
 	TEST_SUMMARY_ASSERT_TABLES(result.tables, ((char*[]){"my_table", NULL}));
 	TEST_SUMMARY_ASSERT_TABLES_WITH_CTX(result.tables, CONTEXT_DDL, ((char*[]){"my_table", NULL}));
 	TEST_ASSERT_LIST_EQUAL(result.statement_types, list_make1("VacuumStmt"));
+}
+
+void it_parses_MERGE(TestState* test_state) {
+	TEST_INIT();
+	Summary result = summary(
+		"WITH cte AS (SELECT * FROM g.other_table CROSS JOIN p) MERGE INTO my_table USING cte ON (id=oid) WHEN MATCHED THEN UPDATE SET a=b WHEN NOT MATCHED THEN INSERT (id, a) VALUES (oid, b);",
+		0,
+		-1
+	);
+	TEST_SUMMARY_ASSERT_TABLES_WITH_CTX(result.tables, CONTEXT_SELECT, ((char*[]){"g.other_table", "p", NULL}));
+	TEST_SUMMARY_ASSERT_TABLES_WITH_CTX(result.tables, CONTEXT_DML, ((char*[]){"my_table", NULL}));
+	TEST_SUMMARY_ASSERT_TABLES(result.tables, ((char*[]){"g.other_table", "my_table", "p", NULL}));
+	TEST_ASSERT_LIST_EQUAL(result.cte_names, list_make1("cte"));
+	TEST_ASSERT_LIST_EQUAL(result.statement_types, list_make2("MergeStmt", "SelectStmt"));
 }
 
 void it_parses_EXPLAIN(TestState* test_state) {
@@ -416,6 +430,16 @@ void it_finds_called_functions(TestState* test_state) {
 	TEST_SUMMARY_ASSERT_FUNCTIONS_WITH_CTX(result.functions, CONTEXT_DDL, ((char*[]){NULL}));
 	TEST_SUMMARY_ASSERT_FUNCTIONS_WITH_CTX(result.functions, CONTEXT_CALL, ((char*[]){"testfunc", NULL}));
 	TEST_ASSERT_LIST_EQUAL(result.statement_types, list_make1("SelectStmt"));
+}
+
+void it_finds_functions_invoked_with_CALL(TestState* test_state) {
+	TEST_INIT();
+	Summary result = summary("CALL testfunc(1);", 0, -1);
+	TEST_ASSERT_LIST_LENGTH(result.tables, 0);
+	TEST_SUMMARY_ASSERT_FUNCTIONS(result.functions, ((char*[]){"testfunc", NULL}));
+	TEST_SUMMARY_ASSERT_FUNCTIONS_WITH_CTX(result.functions, CONTEXT_DDL, ((char*[]){NULL}));
+	TEST_SUMMARY_ASSERT_FUNCTIONS_WITH_CTX(result.functions, CONTEXT_CALL, ((char*[]){"testfunc", NULL}));
+	TEST_ASSERT_LIST_EQUAL(result.statement_types, list_make1("CallStmt"));
 }
 
 void it_finds_dropped_functions(TestState* test_state) {
@@ -927,7 +951,7 @@ void it_parses_DROP_TYPE(TestState* test_state) {
 	TEST_ASSERT_LIST_LENGTH(result.cte_names, 0);
 	TEST_ASSERT_LIST_LENGTH(result.functions, 0);
 	TEST_ASSERT_LIST_LENGTH(result.filter_columns, 0);
-	// UNIMPLEMENTED(truncated_query): assert_eq!(result.truncated_query, None);
+	TEST_ASSERT_NULL(result.truncated_query);
 }
 
 // filter column tests
@@ -1037,4 +1061,15 @@ void it_ignores_order_by_columns(TestState* test_state) {
 	TEST_ASSERT_LIST_LENGTH(result.filter_columns, 2);
 	TEST_SUMMARY_ASSERT_FILTER_COLUMN(result.filter_columns, NULL, "x", "y");
 	TEST_SUMMARY_ASSERT_FILTER_COLUMN(result.filter_columns, NULL, "x", "z");
+}
+
+void it_handles_all_tables_in_schema(TestState* test_state) {
+	Summary result = summary("GRANT SELECT ON ALL TABLES IN SCHEMA public TO myrole", 0, -1);
+	TEST_ASSERT_LIST_LENGTH(result.filter_columns, 0);
+}
+
+void it_handles_schema_qualified_columns(TestState* test_state) {
+	Summary result = summary("SELECT * FROM b.c WHERE a.b.c = 1", 0, -1);
+	TEST_ASSERT_LIST_LENGTH(result.filter_columns, 1);
+	TEST_SUMMARY_ASSERT_FILTER_COLUMN(result.filter_columns, "a", "b", "c");
 }
