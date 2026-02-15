@@ -8,7 +8,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04]
+        os: [ubuntu-24.04, ubuntu-24.04-arm64]
         compiler: [clang, gcc]
         protobuf_lib: [protobuf-c, protobuf-cpp]
         valgrind: [valgrind,no-valgrind]
@@ -73,7 +73,7 @@ jobs:
         COMPILER: ${{ matrix.compiler }}
         VALGRIND: ${{ matrix.valgrind }}
     - name: Build and run tests
-      run: make $FLAGS
+      run: make $FLAGS build_shared
       env:
         FLAGS: ${{ format('{0} {1} {2}', steps.make_flags.outputs.proto_flags, steps.make_flags.outputs.compiler_flags, steps.make_flags.outputs.debug_flags) }}
   build_macos:
@@ -82,7 +82,7 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v4
     - name: Build and run tests
-      run: make
+      run: make build_shared
   build_windows_msvc:
     runs-on: windows-latest
     strategy:
@@ -97,7 +97,7 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v4
     - name: Build and run tests
-      run: nmake /F Makefile.msvc
+      run: nmake /F Makefile.msvc build_shared
   build_windows_msys2:
     runs-on: windows-latest
     strategy:
