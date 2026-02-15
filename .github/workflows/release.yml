@@ -100,13 +100,13 @@ jobs:
         id: names
         shell: bash
         run: |
-          echo "binary=windows-${{ matrix.arch }}-pg_query.dll" >> $GITHUB_OUTPUT
-          echo "zipfile=windows-${{ matrix.arch }}-pg_query.dll.zip" >> $GITHUB_OUTPUT
+          echo "binary=windows-${{ matrix.arch }}-libpg_query.dll" >> $GITHUB_OUTPUT
+          echo "zipfile=windows-${{ matrix.arch }}-libpg_query.dll.zip" >> $GITHUB_OUTPUT
 
       - name: Rename and zip binary
         shell: bash
         run: |
-          cp pg_query.dll ${{ steps.names.outputs.binary }}
+          cp libpg_query.dll ${{ steps.names.outputs.binary }}
           7z a ${{ steps.names.outputs.zipfile }} ${{ steps.names.outputs.binary }}
 
       - name: Upload to release
