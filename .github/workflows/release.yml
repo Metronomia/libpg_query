@@ -103,8 +103,8 @@ jobs:
         id: names
         shell: bash
         run: |
-          echo "binary=windows-${{ matrix.arch }}-libpg_query.dll" >> $GITHUB_OUTPUT
-          echo "zipfile=windows-${{ matrix.arch }}-libpg_query.dll.zip" >> $GITHUB_OUTPUT
+          echo "binary=win-${{ matrix.arch }}-libpg_query.dll" >> $GITHUB_OUTPUT
+          echo "zipfile=win-${{ matrix.arch }}-libpg_query.dll.zip" >> $GITHUB_OUTPUT
 
       - name: Rename and zip binary
         shell: bash
