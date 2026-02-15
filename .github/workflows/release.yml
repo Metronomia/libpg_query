@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build-linux:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x64
+          - os: ubuntu-24.04-arm64
+            arch: arm64
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Build shared library
+        run: make build_shared
+
+      - name: Determine file names
+        id: names
+        run: |
+          echo "binary=linux-${{ matrix.arch }}-libpg_query.so" >> $GITHUB_OUTPUT
+          echo "zipfile=linux-${{ matrix.arch }}-libpg_query.so.zip" >> $GITHUB_OUTPUT
+
+      - name: Rename and zip binary
+        run: |
+          cp libpg_query.so ${{ steps.names.outputs.binary }}
+          zip ${{ steps.names.outputs.zipfile }} ${{ steps.names.outputs.binary }}
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ steps.names.outputs.zipfile }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-macos:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            arch: arm64
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Build shared library
+        run: make build_shared
+
+      - name: Determine file names
+        id: names
+        run: |
+          echo "binary=osx-${{ matrix.arch }}-libpg_query.dylib" >> $GITHUB_OUTPUT
+          echo "zipfile=osx-${{ matrix.arch }}-libpg_query.dylib.zip" >> $GITHUB_OUTPUT
+
+      - name: Rename and zip binary
+        run: |
+          cp libpg_query.dylib ${{ steps.names.outputs.binary }}
+          zip ${{ steps.names.outputs.zipfile }} ${{ steps.names.outputs.binary }}
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ steps.names.outputs.zipfile }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+    steps:
+      - name: Configure MSVC developer console
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Build shared library
+        run: nmake /F Makefile.msvc build_shared
+
+      - name: Determine file names
+        id: names
+        shell: bash
+        run: |
+          echo "binary=windows-${{ matrix.arch }}-pg_query.dll" >> $GITHUB_OUTPUT
+          echo "zipfile=windows-${{ matrix.arch }}-pg_query.dll.zip" >> $GITHUB_OUTPUT
+
+      - name: Rename and zip binary
+        shell: bash
+        run: |
+          cp pg_query.dll ${{ steps.names.outputs.binary }}
+          7z a ${{ steps.names.outputs.zipfile }} ${{ steps.names.outputs.binary }}
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ steps.names.outputs.zipfile }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
