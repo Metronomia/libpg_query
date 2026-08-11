@@ -152,6 +152,28 @@ static Node * _readNode(PgQuery__Node *msg)
 	}
 }
 
+/*
+ * Read a bare Node message, rather than a ParseResult wrapping RawStmts, so that
+ * callers can hand over a single fragment (an expression, a range var, ...) that
+ * was never part of a statement.
+ */
+Node * pg_query_protobuf_to_node(PgQueryProtobuf protobuf)
+{
+	PgQuery__Node *msg = NULL;
+	Node *node = NULL;
+
+	msg = pg_query__node__unpack(NULL, protobuf.len, (const uint8_t *) protobuf.data);
+
+	if (msg == NULL)
+		elog(ERROR, "could not unpack protobuf node message");
+
+	node = _readNode(msg);
+
+	pg_query__node__free_unpacked(msg, NULL);
+
+	return node;
+}
+
 List * pg_query_protobuf_to_nodes(PgQueryProtobuf protobuf)
 {
 	PgQuery__ParseResult *result = NULL;

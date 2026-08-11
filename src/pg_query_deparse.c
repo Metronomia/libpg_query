@@ -20,6 +20,67 @@ pg_query_deparse_protobuf(PgQueryProtobuf parse_tree)
 }
 
 PgQueryDeparseResult
+pg_query_deparse_node_protobuf(PgQueryProtobuf node)
+{
+	PostgresDeparseOpts opts;
+
+	MemSet(&opts, 0, sizeof(PostgresDeparseOpts));
+	return pg_query_deparse_node_protobuf_opts(node, opts);
+}
+
+/*
+ * Deparse a single serialized Node, rather than a ParseResult of RawStmts.
+ *
+ * Unlike pg_query_deparse_protobuf the input is a bare Node message, so a caller
+ * can render a fragment it assembled itself without having to wrap it in a
+ * carrier statement and strip the scaffolding back off again.
+ */
+PgQueryDeparseResult
+pg_query_deparse_node_protobuf_opts(PgQueryProtobuf node, PostgresDeparseOpts opts)
+{
+	PgQueryDeparseResult result = {0};
+	StringInfoData str;
+	MemoryContext ctx;
+
+	ctx = pg_query_enter_memory_context();
+
+	PG_TRY();
+	{
+		initStringInfo(&str);
+		deparseNodeOpts(&str, pg_query_protobuf_to_node(node), opts);
+		result.query = strdup(str.data);
+	}
+	PG_CATCH();
+	{
+		ErrorData  *error_data;
+		PgQueryError *error;
+
+		MemoryContextSwitchTo(ctx);
+		error_data = CopyErrorData();
+
+		/*
+		 * Note: This is intentionally malloc so exiting the memory context
+		 * doesn't free this
+		 */
+		error = malloc(sizeof(PgQueryError));
+		error->message = strdup(error_data->message);
+		error->filename = strdup(error_data->filename);
+		error->funcname = strdup(error_data->funcname);
+		error->context = NULL;
+		error->lineno = error_data->lineno;
+		error->cursorpos = error_data->cursorpos;
+
+		result.error = error;
+		FlushErrorState();
+	}
+	PG_END_TRY();
+
+	pg_query_exit_memory_context(ctx);
+
+	return result;
+}
+
+PgQueryDeparseResult
 pg_query_deparse_protobuf_opts(PgQueryProtobuf parse_tree, PostgresDeparseOpts opts)
 {
 	PgQueryDeparseResult result = {0};

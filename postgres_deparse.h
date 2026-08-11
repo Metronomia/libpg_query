@@ -27,8 +27,13 @@ typedef struct PostgresDeparseOpts {
 struct StringInfoData;
 typedef struct StringInfoData *StringInfo;
 struct RawStmt;
+struct Node;
 
 extern void deparseRawStmt(StringInfo str, struct RawStmt *raw_stmt);
 extern void deparseRawStmtOpts(StringInfo str, struct RawStmt *raw_stmt, PostgresDeparseOpts opts);
+
+/* Deparse a single node instead of a whole statement; see deparseNodeOpts. */
+extern void deparseNode(StringInfo str, struct Node *node);
+extern void deparseNodeOpts(StringInfo str, struct Node *node, PostgresDeparseOpts opts);
 
 #endif

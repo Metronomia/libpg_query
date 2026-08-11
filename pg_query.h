@@ -140,6 +140,9 @@ PgQuerySplitResult pg_query_split_with_parser(const char *input);
 
 PgQueryDeparseResult pg_query_deparse_protobuf(PgQueryProtobuf parse_tree);
 PgQueryDeparseResult pg_query_deparse_protobuf_opts(PgQueryProtobuf parse_tree, struct PostgresDeparseOpts opts);
+/* Deparse a single serialized Node instead of a ParseResult of RawStmts */
+PgQueryDeparseResult pg_query_deparse_node_protobuf(PgQueryProtobuf node);
+PgQueryDeparseResult pg_query_deparse_node_protobuf_opts(PgQueryProtobuf node, struct PostgresDeparseOpts opts);
 PgQueryDeparseCommentsResult pg_query_deparse_comments_for_query(const char *query);
 
 PgQueryIsUtilityResult pg_query_is_utility_stmt(const char *query);

@@ -3051,6 +3051,148 @@ void deparseRawStmtOpts(StringInfo str, struct RawStmt *raw_stmt, PostgresDepars
 	pfree(state);
 }
 
+void deparseNode(StringInfo str, struct Node *node)
+{
+	PostgresDeparseOpts opts;
+	MemSet(&opts, 0, sizeof(PostgresDeparseOpts));
+	deparseNodeOpts(str, node, opts);
+}
+
+/*
+ * Deparse a single node rather than a whole statement, so that callers can render
+ * a fragment they built themselves (or lifted out of a parse tree) back to SQL.
+ *
+ * The node is rendered without any surrounding context, which is the difference
+ * that matters compared to deparsing the same node as part of a statement: the
+ * deparser's DeparseNodeContext drives parenthesization and identifier-vs-constant
+ * quoting, and there is nothing here to derive it from. An A_Expr that would be
+ * parenthesized inside an enclosing A_Expr therefore comes back bare.
+ */
+void deparseNodeOpts(StringInfo str, struct Node *node, PostgresDeparseOpts opts)
+{
+	DeparseState *state = NULL;
+	DeparseStateNestingLevel *parent_level = NULL;
+	bool		pushed_level = true;
+
+	if (node == NULL)
+		elog(ERROR, "deparse error in deparseNode: empty node");
+
+	state = palloc0(sizeof(DeparseState));
+	state->opts = opts;
+	if (state->opts.indent_size == 0)
+		state->opts.indent_size = 4;
+	if (state->opts.max_line_length == 0)
+		state->opts.max_line_length = 80;
+
+	/*
+	 * Fragments are normally rendered somewhere inside a statement and rely on a
+	 * nesting level already being open; without one the part-group bookkeeping
+	 * dereferences a null current level. Statements push their own, so the
+	 * statement arms below drop this one again first.
+	 */
+	parent_level = deparseStateIncreaseNestingLevel(state);
+
+	switch (nodeTag(node))
+	{
+		/* Everything deparseExpr dispatches on; see its own switch. */
+		case T_ColumnRef:
+		case T_A_Const:
+		case T_ParamRef:
+		case T_A_Indirection:
+		case T_CaseExpr:
+		case T_SubLink:
+		case T_A_ArrayExpr:
+		case T_RowExpr:
+		case T_GroupingFunc:
+		case T_TypeCast:
+		case T_CollateClause:
+		case T_A_Expr:
+		case T_BoolExpr:
+		case T_NullTest:
+		case T_BooleanTest:
+		case T_JsonIsPredicate:
+		case T_SetToDefault:
+		case T_MergeSupportFunc:
+		case T_JsonParseExpr:
+		case T_JsonScalarExpr:
+		case T_JsonSerializeExpr:
+		case T_JsonFuncExpr:
+		case T_FuncCall:
+		case T_SQLValueFunction:
+		case T_MinMaxExpr:
+		case T_CoalesceExpr:
+		case T_XmlExpr:
+		case T_XmlSerialize:
+		case T_JsonObjectAgg:
+		case T_JsonArrayAgg:
+		case T_JsonObjectConstructor:
+		case T_JsonArrayConstructor:
+		case T_JsonArrayQueryConstructor:
+			deparseExpr(state, node, DEPARSE_NODE_CONTEXT_NONE);
+			break;
+
+		/* Structural nodes that are neither statements nor expressions. */
+		case T_RangeVar:
+			deparseRangeVar(state, castNode(RangeVar, node), DEPARSE_NODE_CONTEXT_NONE);
+			break;
+		/*
+		 * deparseResTarget is declared but never defined upstream; a ResTarget is
+		 * only ever rendered as a one-element target list.
+		 */
+		case T_ResTarget:
+			deparseTargetList(state, list_make1(node));
+			break;
+		case T_JoinExpr:
+			deparseJoinExpr(state, castNode(JoinExpr, node));
+			break;
+		case T_SortBy:
+			deparseSortBy(state, castNode(SortBy, node));
+			break;
+		case T_IndexElem:
+			deparseIndexElem(state, castNode(IndexElem, node));
+			break;
+		case T_WindowDef:
+			deparseWindowDef(state, castNode(WindowDef, node));
+			break;
+		case T_CaseWhen:
+			deparseCaseWhen(state, castNode(CaseWhen, node));
+			break;
+		case T_TypeName:
+			deparseTypeName(state, castNode(TypeName, node));
+			break;
+		case T_Alias:
+			deparseAlias(state, castNode(Alias, node));
+			break;
+		case T_WithClause:
+			deparseWithClause(state, castNode(WithClause, node));
+			break;
+		case T_CommonTableExpr:
+			deparseCommonTableExpr(state, castNode(CommonTableExpr, node));
+			break;
+
+		case T_RawStmt:
+			deparseStateDecreaseNestingLevel(state, parent_level);
+			pushed_level = false;
+			deparseStmt(state, castNode(RawStmt, node)->stmt);
+			break;
+
+		/* Statements, and the error path for anything unsupported. */
+		default:
+			deparseStateDecreaseNestingLevel(state, parent_level);
+			pushed_level = false;
+			deparseStmt(state, node);
+			break;
+	}
+
+	if (pushed_level)
+		deparseStateDecreaseNestingLevel(state, parent_level);
+
+	deparseEmit(state, str);
+
+	bms_free(state->emitted_comments);
+	pfree(state);
+}
+
 static void deparseAlias(DeparseState *state, Alias *alias)
 {
 	deparseAppendStringInfoString(state, quote_identifier(alias->aliasname));
