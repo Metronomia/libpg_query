@@ -278,6 +278,7 @@ _outRangeVar(OUT_TYPE(RangeVar, RangeVar) out, const RangeVar *node)
   WRITE_CHAR_FIELD(relpersistence, relpersistence, relpersistence);
   WRITE_SPECIFIC_NODE_PTR_FIELD(Alias, alias, alias, alias, alias);
   WRITE_INT_FIELD(location, location, location);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
 }
 
 static void
@@ -1002,6 +1003,7 @@ _outColumnRef(OUT_TYPE(ColumnRef, ColumnRef) out, const ColumnRef *node)
 {
   WRITE_LIST_FIELD(fields, fields, fields);
   WRITE_INT_FIELD(location, location, location);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
 }
 
 static void
@@ -1059,6 +1061,7 @@ _outFuncCall(OUT_TYPE(FuncCall, FuncCall) out, const FuncCall *node)
   WRITE_BOOL_FIELD(func_variadic, func_variadic, func_variadic);
   WRITE_ENUM_FIELD(CoercionForm, funcformat, funcformat, funcformat);
   WRITE_INT_FIELD(location, location, location);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
 }
 
 static void
@@ -1750,6 +1753,8 @@ _outSelectStmt(OUT_TYPE(SelectStmt, SelectStmt) out, const SelectStmt *node)
   WRITE_BOOL_FIELD(all, all, all);
   WRITE_SPECIFIC_NODE_PTR_FIELD(SelectStmt, select_stmt, larg, larg, larg);
   WRITE_SPECIFIC_NODE_PTR_FIELD(SelectStmt, select_stmt, rarg, rarg, rarg);
+  WRITE_INT_FIELD(location, location, location);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
 }
 
 static void

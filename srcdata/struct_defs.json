@@ -445,6 +445,11 @@
           "name": "location",
           "c_type": "ParseLoc",
           "comment": "/* token location, or -1 if unknown */"
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of construct (excl), or -1 if unknown */"
         }
       ],
       "comment": "/*\n * ColumnRef - specifies a reference to a column, or possibly a whole tuple\n *\n * The \"fields\" list must be nonempty.  It can contain String nodes\n * (representing names) and A_Star nodes (representing occurrence of a '*').\n * Currently, A_Star must appear only as the last list element --- the grammar\n * is responsible for enforcing this!\n *\n * Note: any container subscripting or selection of fields from composite columns\n * is represented by an A_Indirection node above the ColumnRef.  However,\n * for simplicity in the normal case, initial field selection from a table\n * name is represented within ColumnRef and not by adding A_Indirection.\n */\n"
@@ -640,6 +645,11 @@
           "name": "location",
           "c_type": "ParseLoc",
           "comment": "/* token location, or -1 if unknown */"
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of construct (excl), or -1 if unknown */"
         }
       ],
       "comment": "/*\n * FuncCall - a function or aggregate invocation\n *\n * agg_order (if not NIL) indicates we saw 'foo(... ORDER BY ...)', or if\n * agg_within_group is true, it was 'foo(...) WITHIN GROUP (ORDER BY ...)'.\n * agg_star indicates we saw a 'foo(*)' construct, while agg_distinct\n * indicates we saw 'foo(DISTINCT ...)'.  In any of these cases, the\n * construct *must* be an aggregate call.  Otherwise, it might be either an\n * aggregate or some other kind of function.  However, if FILTER or OVER is\n * present it had better be an aggregate or window function.\n *\n * Normally, you'd initialize this via makeFuncCall() and then only change the\n * parts of the struct its defaults don't match afterwards, as needed.\n */\n"
@@ -3459,6 +3469,19 @@
         },
         {
           "comment": "\t/* Eventually add fields for CORRESPONDING spec here */\n"
+        },
+        {
+          "comment": ""
+        },
+        {
+          "name": "location",
+          "c_type": "ParseLoc",
+          "comment": "/* token location, or -1 if unknown */"
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of construct (excl), or -1 if unknown */"
         }
       ],
       "comment": "/* ----------------------\n *\t\tSelect Statement\n *\n * A \"simple\" SELECT is represented in the output of gram.y by a single\n * SelectStmt node; so is a VALUES construct.  A query containing set\n * operators (UNION, INTERSECT, EXCEPT) is represented by a tree of SelectStmt\n * nodes, in which the leaf nodes are component SELECTs and the internal nodes\n * represent UNION, INTERSECT, or EXCEPT operators.  Using the same node\n * type for both leaf and internal nodes allows gram.y to stick ORDER BY,\n * LIMIT, etc, clause values into a SELECT statement without worrying\n * whether it is a simple or compound SELECT.\n * ----------------------\n */\n"
@@ -7473,6 +7496,17 @@
           "name": "location",
           "c_type": "ParseLoc",
           "comment": null
+        },
+        {
+          "comment": ""
+        },
+        {
+          "comment": "\t/* end of the construct (exclusive), or -1 if unknown */\n"
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
+          "comment": null
         }
       ],
       "comment": "/*\n * RangeVar - range variable, used in FROM clauses\n *\n * Also used to represent table names in utility statements; there, the alias\n * field is not used, and inh tells whether to apply the operation\n * recursively to child tables.  In some contexts it is also useful to carry\n * a TEMP table indication here.\n */\n"
@@ -9863,12 +9897,12 @@
         {
           "name": "raw_expr",
           "c_type": "Expr*",
-          "comment": "/* raw expression */"
+          "comment": "/* user-specified expression */"
         },
         {
           "name": "formatted_expr",
           "c_type": "Expr*",
-          "comment": "/* formatted expression */"
+          "comment": "/* coerced formatted expression */"
         },
         {
           "name": "format",
@@ -9876,7 +9910,7 @@
           "comment": "/* FORMAT clause, if specified */"
         }
       ],
-      "comment": "/*\n * JsonValueExpr -\n *\t\trepresentation of JSON value expression (expr [FORMAT JsonFormat])\n *\n * The actual value is obtained by evaluating formatted_expr.  raw_expr is\n * only there for displaying the original user-written expression and is not\n * evaluated by ExecInterpExpr() and eval_const_expressions_mutator().\n */\n"
+      "comment": "/*\n * JsonValueExpr -\n *\t\trepresentation of JSON value expression (expr [FORMAT JsonFormat])\n *\n * raw_expr is the user-specified value, while formatted_expr is the value\n * obtained by coercing raw_expr to the type required by either the FORMAT\n * clause or an enclosing node's RETURNING clause.\n *\n * When deparsing a JsonValueExpr, get_rule_expr() prints raw_expr. However,\n * during the evaluation of a JsonValueExpr, the value of formatted_expr\n * takes precedence over that of raw_expr.\n */\n"
     },
     "JsonConstructorExpr": {
       "fields": [
@@ -10814,10 +10848,8 @@
       "comment": "/*----------\n * OnConflictExpr - represents an ON CONFLICT DO ... expression\n *\n * The optimizer requires a list of inference elements, and optionally a WHERE\n * clause to infer a unique index.  The unique index (or, occasionally,\n * indexes) inferred are used to arbitrate whether or not the alternative ON\n * CONFLICT path is taken.\n *----------\n */\n"
     }
   },
-  "nodes/lockoptions": {
-  },
-  "nodes/nodes": {
-  },
+  "nodes/lockoptions": {},
+  "nodes/nodes": {},
   "nodes/params": {
     "ParamExternData": {
       "fields": [
@@ -10931,10 +10963,8 @@
       "comment": "/* type of argument for ParamsErrorCallback */\n"
     }
   },
-  "access/attnum": {
-  },
-  "c": {
-  },
+  "access/attnum": {},
+  "c": {},
   "postgres": {
     "NullableDatum": {
       "fields": [
@@ -10958,8 +10988,7 @@
       "comment": "/*\n * A NullableDatum is used in places where both a Datum and its nullness needs\n * to be stored. This can be more efficient than storing datums and nullness\n * in separate arrays, due to better spatial locality, even if more space may\n * be wasted due to padding.\n */\n"
     }
   },
-  "postgres_ext": {
-  },
+  "postgres_ext": {},
   "commands/vacuum": {
     "VacAttrStats": {
       "fields": [
@@ -11292,10 +11321,8 @@
       "comment": "/*\n * BlockId:\n *\n * this is a storage type for BlockNumber.  in other words, this type\n * is used for on-disk structures (e.g., in HeapTupleData) whereas\n * BlockNumber is the type on which calculations are performed (e.g.,\n * in access method code).\n *\n * there doesn't appear to be any reason to have separate types except\n * for the fact that BlockIds can be SHORTALIGN'd (and therefore any\n * structures that contains them, such as ItemPointerData, can also be\n * SHORTALIGN'd).  this is an important consideration for reducing the\n * space requirements of the line pointer (ItemIdData) array on each\n * page and the header of each heap or index tuple, so it doesn't seem\n * wise to change this without good reason.\n */\n"
     }
   },
-  "access/sdir": {
-  },
-  "mb/pg_wchar": {
-  },
+  "access/sdir": {},
+  "mb/pg_wchar": {},
   "../backend/parser/gram": {
     "YYLTYPE": {
       "fields": [

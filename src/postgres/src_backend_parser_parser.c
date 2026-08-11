@@ -78,7 +78,8 @@ raw_parser(const char *str, RawParseMode mode)
 
 		yyextra.have_lookahead = true;
 		yyextra.lookahead_token = mode_token[mode];
-		yyextra.lookahead_yylloc = 0;
+		yyextra.lookahead_yylloc.start = 0;
+		yyextra.lookahead_yylloc.end = 0;
 		yyextra.lookahead_end = NULL;
 	}
 
@@ -163,7 +164,7 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 			break;
 		case UIDENT:
 		case USCONST:
-			cur_token_length = strlen(yyextra->core_yy_extra.scanbuf + *llocp);
+			cur_token_length = strlen(yyextra->core_yy_extra.scanbuf + llocp->start);
 			break;
 		case WITHOUT:
 			cur_token_length = 7;
@@ -181,7 +182,7 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 	 * it to fully revert the lookahead call for error reporting purposes.
 	 */
 	yyextra->lookahead_end = yyextra->core_yy_extra.scanbuf +
-		*llocp + cur_token_length;
+		llocp->start + cur_token_length;
 	Assert(*(yyextra->lookahead_end) == '\0');
 
 	/*
@@ -293,14 +294,19 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 					scanner_yyerror("invalid Unicode escape character",
 									yyscanner);
 
-				/* Now restore *llocp; errors will point to first token */
+				/*
+				 * Now restore *llocp; errors will point to first token.
+				 * All three tokens are consumed as one, so the extent has
+				 * to run through the end of the third one.
+				 */
+				cur_yylloc.end = llocp->end;
 				*llocp = cur_yylloc;
 
 				/* Apply Unicode conversion */
 				lvalp->core_yystype.str =
 					str_udeescape(lvalp->core_yystype.str,
 								  escstr[0],
-								  *llocp,
+								  llocp->start,
 								  yyscanner);
 
 				/*
@@ -316,7 +322,7 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 				lvalp->core_yystype.str =
 					str_udeescape(lvalp->core_yystype.str,
 								  '\\',
-								  *llocp,
+								  llocp->start,
 								  yyscanner);
 			}
 

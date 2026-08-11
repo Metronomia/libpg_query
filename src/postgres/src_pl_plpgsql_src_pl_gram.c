@@ -2487,7 +2487,7 @@ yyreduce:
 						new = palloc0(sizeof(PLpgSQL_stmt_block));
 
 						new->cmd_type	= PLPGSQL_STMT_BLOCK;
-						new->lineno		= plpgsql_location_to_lineno((yylsp[(2) - (6)]));
+						new->lineno		= plpgsql_location_to_lineno((yylsp[(2) - (6)]).start);
 						new->stmtid		= ++plpgsql_curr_compile->nstatements;
 						new->label		= (yyvsp[(1) - (6)].declhdr).label;
 						new->n_initvars = (yyvsp[(1) - (6)].declhdr).n_initvars;
@@ -2495,7 +2495,7 @@ yyreduce:
 						new->body		= (yyvsp[(3) - (6)].list);
 						new->exceptions	= (yyvsp[(4) - (6)].exception_block);
 
-						check_labels((yyvsp[(1) - (6)].declhdr).label, (yyvsp[(6) - (6)].str), (yylsp[(6) - (6)]));
+						check_labels((yyvsp[(1) - (6)].declhdr).label, (yyvsp[(6) - (6)].str), (yylsp[(6) - (6)]).start);
 						plpgsql_ns_pop();
 
 						(yyval.stmt) = (PLpgSQL_stmt *) new;
@@ -2563,7 +2563,7 @@ yyreduce:
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("block label must be placed before DECLARE, not after"),
-								 parser_errposition((yylsp[(1) - (3)]))));
+								 parser_errposition((yylsp[(1) - (3)]).start)));
 					;}
     break;
 
@@ -2585,7 +2585,7 @@ yyreduce:
 										(errcode(ERRCODE_DATATYPE_MISMATCH),
 										 errmsg("collations are not supported by type %s",
 												format_type_be((yyvsp[(3) - (6)].dtype)->typoid)),
-										 parser_errposition((yylsp[(4) - (6)]))));
+										 parser_errposition((yylsp[(4) - (6)]).start)));
 							(yyvsp[(3) - (6)].dtype)->collation = (yyvsp[(4) - (6)].oid);
 						}
 
@@ -2604,7 +2604,7 @@ yyreduce:
 									(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 									 errmsg("variable \"%s\" must have a default value, since it's declared NOT NULL",
 											var->refname),
-									 parser_errposition((yylsp[(5) - (6)]))));
+									 parser_errposition((yylsp[(5) - (6)]).start)));
 					;}
     break;
 
@@ -2691,7 +2691,7 @@ yyreduce:
 						new = palloc0(sizeof(PLpgSQL_row));
 						new->dtype = PLPGSQL_DTYPE_ROW;
 						new->refname = "(unnamed row)";
-						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (3)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (3)]).start);
 						new->rowtupdesc = NULL;
 						new->nfields = list_length((yyvsp[(2) - (3)].list));
 						new->fieldnames = palloc(new->nfields * sizeof(char *));
@@ -2749,7 +2749,7 @@ yyreduce:
 									(errcode(ERRCODE_UNDEFINED_OBJECT),
 									 errmsg("variable \"%s\" does not exist",
 											(yyvsp[(1) - (1)].word).ident),
-									 parser_errposition((yylsp[(1) - (1)]))));
+									 parser_errposition((yylsp[(1) - (1)]).start)));
 						(yyval.nsitem) = nsi;
 					;}
     break;
@@ -2767,7 +2767,7 @@ yyreduce:
 									(errcode(ERRCODE_UNDEFINED_OBJECT),
 									 errmsg("variable \"%s\" does not exist",
 											(yyvsp[(1) - (1)].keyword)),
-									 parser_errposition((yylsp[(1) - (1)]))));
+									 parser_errposition((yylsp[(1) - (1)]).start)));
 						(yyval.nsitem) = nsi;
 					;}
     break;
@@ -2796,7 +2796,7 @@ yyreduce:
 									(errcode(ERRCODE_UNDEFINED_OBJECT),
 									 errmsg("variable \"%s\" does not exist",
 											NameListToString((yyvsp[(1) - (1)].cword).idents)),
-									 parser_errposition((yylsp[(1) - (1)]))));
+									 parser_errposition((yylsp[(1) - (1)]).start)));
 						(yyval.nsitem) = nsi;
 					;}
     break;
@@ -2805,7 +2805,7 @@ yyreduce:
 #line 695 "pl_gram.y"
     {
 						(yyval.varname).name = (yyvsp[(1) - (1)].word).ident;
-						(yyval.varname).lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]));
+						(yyval.varname).lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]).start);
 						/*
 						 * Check to make sure name isn't already declared
 						 * in the current block.
@@ -2826,7 +2826,7 @@ yyreduce:
 										(errcode(ERRCODE_DUPLICATE_ALIAS),
 										 errmsg("variable \"%s\" shadows a previously defined variable",
 												(yyvsp[(1) - (1)].word).ident),
-										 parser_errposition((yylsp[(1) - (1)]))));
+										 parser_errposition((yylsp[(1) - (1)]).start)));
 						}
 
 					;}
@@ -2836,7 +2836,7 @@ yyreduce:
 #line 723 "pl_gram.y"
     {
 						(yyval.varname).name = pstrdup((yyvsp[(1) - (1)].keyword));
-						(yyval.varname).lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]));
+						(yyval.varname).lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]).start);
 						/*
 						 * Check to make sure name isn't already declared
 						 * in the current block.
@@ -2857,7 +2857,7 @@ yyreduce:
 										(errcode(ERRCODE_DUPLICATE_ALIAS),
 										 errmsg("variable \"%s\" shadows a previously defined variable",
 												(yyvsp[(1) - (1)].keyword)),
-										 parser_errposition((yylsp[(1) - (1)]))));
+										 parser_errposition((yylsp[(1) - (1)]).start)));
 						}
 
 					;}
@@ -3080,7 +3080,7 @@ yyreduce:
 
 						new = palloc0(sizeof(PLpgSQL_stmt_perform));
 						new->cmd_type = PLPGSQL_STMT_PERFORM;
-						new->lineno   = plpgsql_location_to_lineno((yylsp[(1) - (1)]));
+						new->lineno   = plpgsql_location_to_lineno((yylsp[(1) - (1)]).start);
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 						plpgsql_push_back_token(K_PERFORM);
 
@@ -3116,7 +3116,7 @@ yyreduce:
 
 						new = palloc0(sizeof(PLpgSQL_stmt_call));
 						new->cmd_type = PLPGSQL_STMT_CALL;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]).start);
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 						plpgsql_push_back_token(K_CALL);
 						new->expr = read_sql_stmt();
@@ -3138,7 +3138,7 @@ yyreduce:
 
 						new = palloc0(sizeof(PLpgSQL_stmt_call));
 						new->cmd_type = PLPGSQL_STMT_CALL;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]).start);
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 						plpgsql_push_back_token(K_DO);
 						new->expr = read_sql_stmt();
@@ -3175,10 +3175,10 @@ yyreduce:
 								pmode = 0; /* keep compiler quiet */
 						}
 
-						check_assignable((yyvsp[(1) - (1)].wdatum).datum, (yylsp[(1) - (1)]));
+						check_assignable((yyvsp[(1) - (1)].wdatum).datum, (yylsp[(1) - (1)]).start);
 						new = palloc0(sizeof(PLpgSQL_stmt_assign));
 						new->cmd_type = PLPGSQL_STMT_ASSIGN;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]).start);
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 						new->varno = (yyvsp[(1) - (1)].wdatum).datum->dno;
 						/* Push back the head name to include it in the stmt */
@@ -3200,7 +3200,7 @@ yyreduce:
 
 						new = palloc0(sizeof(PLpgSQL_stmt_getdiag));
 						new->cmd_type = PLPGSQL_STMT_GETDIAG;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (5)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (5)]).start);
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 						new->is_stacked = (yyvsp[(2) - (5)].boolean);
 						new->diag_items = (yyvsp[(4) - (5)].list);
@@ -3222,7 +3222,7 @@ yyreduce:
 												(errcode(ERRCODE_SYNTAX_ERROR),
 												 errmsg("diagnostics item %s is not allowed in GET STACKED DIAGNOSTICS",
 														plpgsql_getdiag_kindname(ditem->kind)),
-												 parser_errposition((yylsp[(1) - (5)]))));
+												 parser_errposition((yylsp[(1) - (5)]).start)));
 									break;
 								/* these fields are disallowed in current case */
 								case PLPGSQL_GETDIAG_ERROR_CONTEXT:
@@ -3240,7 +3240,7 @@ yyreduce:
 												(errcode(ERRCODE_SYNTAX_ERROR),
 												 errmsg("diagnostics item %s is not allowed in GET CURRENT DIAGNOSTICS",
 														plpgsql_getdiag_kindname(ditem->kind)),
-												 parser_errposition((yylsp[(1) - (5)]))));
+												 parser_errposition((yylsp[(1) - (5)]).start)));
 									break;
 								/* these fields are allowed in either case */
 								case PLPGSQL_GETDIAG_CONTEXT:
@@ -3368,8 +3368,8 @@ yyreduce:
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("\"%s\" is not a scalar variable",
 											NameOfDatum(&((yyvsp[(1) - (1)].wdatum)))),
-									 parser_errposition((yylsp[(1) - (1)]))));
-						check_assignable((yyvsp[(1) - (1)].wdatum).datum, (yylsp[(1) - (1)]));
+									 parser_errposition((yylsp[(1) - (1)]).start)));
+						check_assignable((yyvsp[(1) - (1)].wdatum).datum, (yylsp[(1) - (1)]).start);
 						(yyval.datum) = (yyvsp[(1) - (1)].wdatum).datum;
 					;}
     break;
@@ -3378,7 +3378,7 @@ yyreduce:
 #line 1157 "pl_gram.y"
     {
 						/* just to give a better message than "syntax error" */
-						word_is_not_variable(&((yyvsp[(1) - (1)].word)), (yylsp[(1) - (1)]));
+						word_is_not_variable(&((yyvsp[(1) - (1)].word)), (yylsp[(1) - (1)]).start);
 					;}
     break;
 
@@ -3386,7 +3386,7 @@ yyreduce:
 #line 1162 "pl_gram.y"
     {
 						/* just to give a better message than "syntax error" */
-						cword_is_not_variable(&((yyvsp[(1) - (1)].cword)), (yylsp[(1) - (1)]));
+						cword_is_not_variable(&((yyvsp[(1) - (1)].cword)), (yylsp[(1) - (1)]).start);
 					;}
     break;
 
@@ -3397,7 +3397,7 @@ yyreduce:
 
 						new = palloc0(sizeof(PLpgSQL_stmt_if));
 						new->cmd_type = PLPGSQL_STMT_IF;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (8)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (8)]).start);
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 						new->cond = (yyvsp[(2) - (8)].expr);
 						new->then_body = (yyvsp[(3) - (8)].list);
@@ -3421,7 +3421,7 @@ yyreduce:
 						PLpgSQL_if_elsif *new;
 
 						new = palloc0(sizeof(PLpgSQL_if_elsif));
-						new->lineno = plpgsql_location_to_lineno((yylsp[(2) - (4)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(2) - (4)]).start);
 						new->cond = (yyvsp[(3) - (4)].expr);
 						new->stmts = (yyvsp[(4) - (4)].list);
 
@@ -3446,7 +3446,7 @@ yyreduce:
   case 105:
 #line 1213 "pl_gram.y"
     {
-						(yyval.stmt) = make_case((yylsp[(1) - (7)]), (yyvsp[(2) - (7)].expr), (yyvsp[(3) - (7)].list), (yyvsp[(4) - (7)].list));
+						(yyval.stmt) = make_case((yylsp[(1) - (7)]).start, (yyvsp[(2) - (7)].expr), (yyvsp[(3) - (7)].list), (yyvsp[(4) - (7)].list));
 					;}
     break;
 
@@ -3485,7 +3485,7 @@ yyreduce:
     {
 						PLpgSQL_case_when *new = palloc(sizeof(PLpgSQL_case_when));
 
-						new->lineno	= plpgsql_location_to_lineno((yylsp[(1) - (3)]));
+						new->lineno	= plpgsql_location_to_lineno((yylsp[(1) - (3)]).start);
 						new->expr = (yyvsp[(2) - (3)].expr);
 						new->stmts = (yyvsp[(3) - (3)].list);
 						(yyval.casewhen) = new;
@@ -3522,7 +3522,7 @@ yyreduce:
 
 						new = palloc0(sizeof(PLpgSQL_stmt_loop));
 						new->cmd_type = PLPGSQL_STMT_LOOP;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(2) - (3)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(2) - (3)]).start);
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 						new->label = (yyvsp[(1) - (3)].str);
 						new->body = (yyvsp[(3) - (3)].loop_body).stmts;
@@ -3541,7 +3541,7 @@ yyreduce:
 
 						new = palloc0(sizeof(PLpgSQL_stmt_while));
 						new->cmd_type = PLPGSQL_STMT_WHILE;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(2) - (4)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(2) - (4)]).start);
 						new->stmtid	= ++plpgsql_curr_compile->nstatements;
 						new->label = (yyvsp[(1) - (4)].str);
 						new->cond = (yyvsp[(3) - (4)].expr);
@@ -3563,7 +3563,7 @@ yyreduce:
 							PLpgSQL_stmt_fori *new;
 
 							new = (PLpgSQL_stmt_fori *) (yyvsp[(3) - (4)].stmt);
-							new->lineno = plpgsql_location_to_lineno((yylsp[(2) - (4)]));
+							new->lineno = plpgsql_location_to_lineno((yylsp[(2) - (4)]).start);
 							new->label = (yyvsp[(1) - (4)].str);
 							new->body = (yyvsp[(4) - (4)].loop_body).stmts;
 							(yyval.stmt) = (PLpgSQL_stmt *) new;
@@ -3577,7 +3577,7 @@ yyreduce:
 								   (yyvsp[(3) - (4)].stmt)->cmd_type == PLPGSQL_STMT_DYNFORS);
 							/* forq is the common supertype of all three */
 							new = (PLpgSQL_stmt_forq *) (yyvsp[(3) - (4)].stmt);
-							new->lineno = plpgsql_location_to_lineno((yylsp[(2) - (4)]));
+							new->lineno = plpgsql_location_to_lineno((yylsp[(2) - (4)]).start);
 							new->label = (yyvsp[(1) - (4)].str);
 							new->body = (yyvsp[(4) - (4)].loop_body).stmts;
 							(yyval.stmt) = (PLpgSQL_stmt *) new;
@@ -3593,7 +3593,7 @@ yyreduce:
 #line 1345 "pl_gram.y"
     {
 						int			tok = yylex();
-						int			tokloc = yylloc;
+						int			tokloc = yylloc.start;
 
 						if (tok == K_EXECUTE)
 						{
@@ -3612,14 +3612,14 @@ yyreduce:
 							if ((yyvsp[(1) - (2)].forvariable).row)
 							{
 								new->var = (PLpgSQL_variable *) (yyvsp[(1) - (2)].forvariable).row;
-								check_assignable((yyvsp[(1) - (2)].forvariable).row, (yylsp[(1) - (2)]));
+								check_assignable((yyvsp[(1) - (2)].forvariable).row, (yylsp[(1) - (2)]).start);
 							}
 							else if ((yyvsp[(1) - (2)].forvariable).scalar)
 							{
 								/* convert single scalar to list */
 								new->var = (PLpgSQL_variable *)
 									make_scalar_list1((yyvsp[(1) - (2)].forvariable).name, (yyvsp[(1) - (2)].forvariable).scalar,
-													  (yyvsp[(1) - (2)].forvariable).lineno, (yylsp[(1) - (2)]));
+													  (yyvsp[(1) - (2)].forvariable).lineno, (yylsp[(1) - (2)]).start);
 								/* make_scalar_list1 did check_assignable */
 							}
 							else
@@ -3627,7 +3627,7 @@ yyreduce:
 								ereport(ERROR,
 										(errcode(ERRCODE_DATATYPE_MISMATCH),
 										 errmsg("loop variable of loop over rows must be a record variable or list of scalar variables"),
-										 parser_errposition((yylsp[(1) - (2)]))));
+										 parser_errposition((yylsp[(1) - (2)]).start)));
 							}
 							new->query = expr;
 
@@ -3662,7 +3662,7 @@ yyreduce:
 								ereport(ERROR,
 										(errcode(ERRCODE_SYNTAX_ERROR),
 										 errmsg("cursor FOR loop must have only one target variable"),
-										 parser_errposition((yylsp[(1) - (2)]))));
+										 parser_errposition((yylsp[(1) - (2)]).start)));
 
 							/* can't use an unbound cursor this way */
 							if (cursor->cursor_explicit_expr == NULL)
@@ -3759,7 +3759,7 @@ yyreduce:
 									ereport(ERROR,
 											(errcode(ERRCODE_SYNTAX_ERROR),
 											 errmsg("integer FOR loop must have only one target variable"),
-											 parser_errposition((yylsp[(1) - (2)]))));
+											 parser_errposition((yylsp[(1) - (2)]).start)));
 
 								/* create loop's private variable */
 								fvar = (PLpgSQL_var *)
@@ -3805,14 +3805,14 @@ yyreduce:
 								if ((yyvsp[(1) - (2)].forvariable).row)
 								{
 									new->var = (PLpgSQL_variable *) (yyvsp[(1) - (2)].forvariable).row;
-									check_assignable((yyvsp[(1) - (2)].forvariable).row, (yylsp[(1) - (2)]));
+									check_assignable((yyvsp[(1) - (2)].forvariable).row, (yylsp[(1) - (2)]).start);
 								}
 								else if ((yyvsp[(1) - (2)].forvariable).scalar)
 								{
 									/* convert single scalar to list */
 									new->var = (PLpgSQL_variable *)
 										make_scalar_list1((yyvsp[(1) - (2)].forvariable).name, (yyvsp[(1) - (2)].forvariable).scalar,
-														  (yyvsp[(1) - (2)].forvariable).lineno, (yylsp[(1) - (2)]));
+														  (yyvsp[(1) - (2)].forvariable).lineno, (yylsp[(1) - (2)]).start);
 									/* make_scalar_list1 did check_assignable */
 								}
 								else
@@ -3820,7 +3820,7 @@ yyreduce:
 									ereport(ERROR,
 											(errcode(ERRCODE_SYNTAX_ERROR),
 											 errmsg("loop variable of loop over rows must be a record variable or list of scalar variables"),
-											 parser_errposition((yylsp[(1) - (2)]))));
+											 parser_errposition((yylsp[(1) - (2)]).start)));
 								}
 
 								new->query = expr1;
@@ -3834,7 +3834,7 @@ yyreduce:
 #line 1603 "pl_gram.y"
     {
 						(yyval.forvariable).name = NameOfDatum(&((yyvsp[(1) - (1)].wdatum)));
-						(yyval.forvariable).lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]));
+						(yyval.forvariable).lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]).start);
 						if ((yyvsp[(1) - (1)].wdatum).datum->dtype == PLPGSQL_DTYPE_ROW ||
 							(yyvsp[(1) - (1)].wdatum).datum->dtype == PLPGSQL_DTYPE_REC)
 						{
@@ -3854,7 +3854,7 @@ yyreduce:
 								(yyval.forvariable).row = (PLpgSQL_datum *)
 									read_into_scalar_list((yyval.forvariable).name,
 														  (yyval.forvariable).scalar,
-														  (yylsp[(1) - (1)]));
+														  (yylsp[(1) - (1)]).start);
 						}
 					;}
     break;
@@ -3865,14 +3865,14 @@ yyreduce:
 						int			tok;
 
 						(yyval.forvariable).name = (yyvsp[(1) - (1)].word).ident;
-						(yyval.forvariable).lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]));
+						(yyval.forvariable).lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]).start);
 						(yyval.forvariable).scalar = NULL;
 						(yyval.forvariable).row = NULL;
 						/* check for comma-separated list */
 						tok = yylex();
 						plpgsql_push_back_token(tok);
 						if (tok == ',')
-							word_is_not_variable(&((yyvsp[(1) - (1)].word)), (yylsp[(1) - (1)]));
+							word_is_not_variable(&((yyvsp[(1) - (1)].word)), (yylsp[(1) - (1)]).start);
 					;}
     break;
 
@@ -3880,7 +3880,7 @@ yyreduce:
 #line 1643 "pl_gram.y"
     {
 						/* just to give a better message than "syntax error" */
-						cword_is_not_variable(&((yyvsp[(1) - (1)].cword)), (yylsp[(1) - (1)]));
+						cword_is_not_variable(&((yyvsp[(1) - (1)].cword)), (yylsp[(1) - (1)]).start);
 					;}
     break;
 
@@ -3891,7 +3891,7 @@ yyreduce:
 
 						new = palloc0(sizeof(PLpgSQL_stmt_foreach_a));
 						new->cmd_type = PLPGSQL_STMT_FOREACH_A;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(2) - (8)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(2) - (8)]).start);
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 						new->label = (yyvsp[(1) - (8)].str);
 						new->slice = (yyvsp[(4) - (8)].ival);
@@ -3901,19 +3901,19 @@ yyreduce:
 						if ((yyvsp[(3) - (8)].forvariable).row)
 						{
 							new->varno = (yyvsp[(3) - (8)].forvariable).row->dno;
-							check_assignable((yyvsp[(3) - (8)].forvariable).row, (yylsp[(3) - (8)]));
+							check_assignable((yyvsp[(3) - (8)].forvariable).row, (yylsp[(3) - (8)]).start);
 						}
 						else if ((yyvsp[(3) - (8)].forvariable).scalar)
 						{
 							new->varno = (yyvsp[(3) - (8)].forvariable).scalar->dno;
-							check_assignable((yyvsp[(3) - (8)].forvariable).scalar, (yylsp[(3) - (8)]));
+							check_assignable((yyvsp[(3) - (8)].forvariable).scalar, (yylsp[(3) - (8)]).start);
 						}
 						else
 						{
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("loop variable of FOREACH must be a known variable or list of variables"),
-											 parser_errposition((yylsp[(3) - (8)]))));
+											 parser_errposition((yylsp[(3) - (8)]).start)));
 						}
 
 						check_labels((yyvsp[(1) - (8)].str), (yyvsp[(8) - (8)].loop_body).end_label, (yyvsp[(8) - (8)].loop_body).end_label_location);
@@ -3946,7 +3946,7 @@ yyreduce:
 						new->cmd_type = PLPGSQL_STMT_EXIT;
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 						new->is_exit = (yyvsp[(1) - (3)].boolean);
-						new->lineno	= plpgsql_location_to_lineno((yylsp[(1) - (3)]));
+						new->lineno	= plpgsql_location_to_lineno((yylsp[(1) - (3)]).start);
 						new->label = (yyvsp[(2) - (3)].str);
 						new->cond = (yyvsp[(3) - (3)].expr);
 
@@ -3962,14 +3962,14 @@ yyreduce:
 										 errmsg("there is no label \"%s\" "
 												"attached to any block or loop enclosing this statement",
 												(yyvsp[(2) - (3)].str)),
-										 parser_errposition((yylsp[(2) - (3)]))));
+										 parser_errposition((yylsp[(2) - (3)]).start)));
 							/* CONTINUE only allows loop labels */
 							if (label->itemno != PLPGSQL_LABEL_LOOP && !new->is_exit)
 								ereport(ERROR,
 										(errcode(ERRCODE_SYNTAX_ERROR),
 										 errmsg("block label \"%s\" cannot be used in CONTINUE",
 												(yyvsp[(2) - (3)].str)),
-										 parser_errposition((yylsp[(2) - (3)]))));
+										 parser_errposition((yylsp[(2) - (3)]).start)));
 						}
 						else
 						{
@@ -3984,7 +3984,7 @@ yyreduce:
 										 new->is_exit ?
 										 errmsg("EXIT cannot be used outside a loop, unless it has a label") :
 										 errmsg("CONTINUE cannot be used outside a loop"),
-										 parser_errposition((yylsp[(1) - (3)]))));
+										 parser_errposition((yylsp[(1) - (3)]).start)));
 						}
 
 						(yyval.stmt) = (PLpgSQL_stmt *) new;
@@ -4017,17 +4017,17 @@ yyreduce:
 						if (tok_is_keyword(tok, &yylval,
 										   K_NEXT, "next"))
 						{
-							(yyval.stmt) = make_return_next_stmt((yylsp[(1) - (1)]));
+							(yyval.stmt) = make_return_next_stmt((yylsp[(1) - (1)]).start);
 						}
 						else if (tok_is_keyword(tok, &yylval,
 												K_QUERY, "query"))
 						{
-							(yyval.stmt) = make_return_query_stmt((yylsp[(1) - (1)]));
+							(yyval.stmt) = make_return_query_stmt((yylsp[(1) - (1)]).start);
 						}
 						else
 						{
 							plpgsql_push_back_token(tok);
-							(yyval.stmt) = make_return_stmt((yylsp[(1) - (1)]));
+							(yyval.stmt) = make_return_stmt((yylsp[(1) - (1)]).start);
 						}
 					;}
     break;
@@ -4041,7 +4041,7 @@ yyreduce:
 						new = palloc(sizeof(PLpgSQL_stmt_raise));
 
 						new->cmd_type = PLPGSQL_STMT_RAISE;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]).start);
 						new->stmtid	= ++plpgsql_curr_compile->nstatements;
 						new->elog_level = ERROR;	/* default */
 						new->condname = NULL;
@@ -4187,7 +4187,7 @@ yyreduce:
 						new = palloc(sizeof(PLpgSQL_stmt_assert));
 
 						new->cmd_type = PLPGSQL_STMT_ASSERT;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]).start);
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 
 						new->cond = read_sql_expression2(',', ';',
@@ -4208,28 +4208,28 @@ yyreduce:
     {
 						(yyval.loop_body).stmts = (yyvsp[(1) - (5)].list);
 						(yyval.loop_body).end_label = (yyvsp[(4) - (5)].str);
-						(yyval.loop_body).end_label_location = (yylsp[(4) - (5)]);
+						(yyval.loop_body).end_label_location = (yylsp[(4) - (5)]).start;
 					;}
     break;
 
   case 129:
 #line 1974 "pl_gram.y"
     {
-						(yyval.stmt) = make_execsql_stmt(K_IMPORT, (yylsp[(1) - (1)]), NULL);
+						(yyval.stmt) = make_execsql_stmt(K_IMPORT, (yylsp[(1) - (1)]).start, NULL);
 					;}
     break;
 
   case 130:
 #line 1978 "pl_gram.y"
     {
-						(yyval.stmt) = make_execsql_stmt(K_INSERT, (yylsp[(1) - (1)]), NULL);
+						(yyval.stmt) = make_execsql_stmt(K_INSERT, (yylsp[(1) - (1)]).start, NULL);
 					;}
     break;
 
   case 131:
 #line 1982 "pl_gram.y"
     {
-						(yyval.stmt) = make_execsql_stmt(K_MERGE, (yylsp[(1) - (1)]), NULL);
+						(yyval.stmt) = make_execsql_stmt(K_MERGE, (yylsp[(1) - (1)]).start, NULL);
 					;}
     break;
 
@@ -4242,8 +4242,8 @@ yyreduce:
 						plpgsql_push_back_token(tok);
 						if (tok == '=' || tok == COLON_EQUALS ||
 							tok == '[' || tok == '.')
-							word_is_not_variable(&((yyvsp[(1) - (1)].word)), (yylsp[(1) - (1)]));
-						(yyval.stmt) = make_execsql_stmt(T_WORD, (yylsp[(1) - (1)]), &((yyvsp[(1) - (1)].word)));
+							word_is_not_variable(&((yyvsp[(1) - (1)].word)), (yylsp[(1) - (1)]).start);
+						(yyval.stmt) = make_execsql_stmt(T_WORD, (yylsp[(1) - (1)]).start, &((yyvsp[(1) - (1)].word)));
 					;}
     break;
 
@@ -4256,8 +4256,8 @@ yyreduce:
 						plpgsql_push_back_token(tok);
 						if (tok == '=' || tok == COLON_EQUALS ||
 							tok == '[' || tok == '.')
-							cword_is_not_variable(&((yyvsp[(1) - (1)].cword)), (yylsp[(1) - (1)]));
-						(yyval.stmt) = make_execsql_stmt(T_CWORD, (yylsp[(1) - (1)]), NULL);
+							cword_is_not_variable(&((yyvsp[(1) - (1)].cword)), (yylsp[(1) - (1)]).start);
+						(yyval.stmt) = make_execsql_stmt(T_CWORD, (yylsp[(1) - (1)]).start, NULL);
 					;}
     break;
 
@@ -4276,7 +4276,7 @@ yyreduce:
 
 						new = palloc(sizeof(PLpgSQL_stmt_dynexecute));
 						new->cmd_type = PLPGSQL_STMT_DYNEXECUTE;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]).start);
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 						new->query = expr;
 						new->into = false;
@@ -4333,7 +4333,7 @@ yyreduce:
 
 						new = palloc0(sizeof(PLpgSQL_stmt_open));
 						new->cmd_type = PLPGSQL_STMT_OPEN;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (2)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (2)]).start);
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 						new->curvar = (yyvsp[(2) - (2)].var)->dno;
 						new->cursor_options = CURSOR_OPT_FAST_PLAN;
@@ -4424,9 +4424,9 @@ yyreduce:
 							ereport(ERROR,
 									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 									 errmsg("FETCH statement cannot return multiple rows"),
-									 parser_errposition((yylsp[(1) - (4)]))));
+									 parser_errposition((yylsp[(1) - (4)]).start)));
 
-						fetch->lineno = plpgsql_location_to_lineno((yylsp[(1) - (4)]));
+						fetch->lineno = plpgsql_location_to_lineno((yylsp[(1) - (4)]).start);
 						fetch->target	= target;
 						fetch->curvar	= (yyvsp[(3) - (4)].var)->dno;
 						fetch->is_move	= false;
@@ -4440,7 +4440,7 @@ yyreduce:
     {
 						PLpgSQL_stmt_fetch *fetch = (yyvsp[(2) - (4)].fetch);
 
-						fetch->lineno = plpgsql_location_to_lineno((yylsp[(1) - (4)]));
+						fetch->lineno = plpgsql_location_to_lineno((yylsp[(1) - (4)]).start);
 						fetch->curvar = (yyvsp[(3) - (4)].var)->dno;
 						fetch->is_move = true;
 
@@ -4462,7 +4462,7 @@ yyreduce:
 
 						new = palloc(sizeof(PLpgSQL_stmt_close));
 						new->cmd_type = PLPGSQL_STMT_CLOSE;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (3)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (3)]).start);
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 						new->curvar = (yyvsp[(2) - (3)].var)->dno;
 
@@ -4485,7 +4485,7 @@ yyreduce:
 
 						new = palloc(sizeof(PLpgSQL_stmt_commit));
 						new->cmd_type = PLPGSQL_STMT_COMMIT;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (3)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (3)]).start);
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 						new->chain = (yyvsp[(2) - (3)].ival);
 
@@ -4500,7 +4500,7 @@ yyreduce:
 
 						new = palloc(sizeof(PLpgSQL_stmt_rollback));
 						new->cmd_type = PLPGSQL_STMT_ROLLBACK;
-						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (3)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (3)]).start);
 						new->stmtid = ++plpgsql_curr_compile->nstatements;
 						new->chain = (yyvsp[(2) - (3)].ival);
 
@@ -4536,14 +4536,14 @@ yyreduce:
 							ereport(ERROR,
 									(errcode(ERRCODE_DATATYPE_MISMATCH),
 									 errmsg("cursor variable must be a simple variable"),
-									 parser_errposition((yylsp[(1) - (1)]))));
+									 parser_errposition((yylsp[(1) - (1)]).start)));
 
 						if (((PLpgSQL_var *) (yyvsp[(1) - (1)].wdatum).datum)->datatype->typoid != REFCURSOROID)
 							ereport(ERROR,
 									(errcode(ERRCODE_DATATYPE_MISMATCH),
 									 errmsg("variable \"%s\" must be of type cursor or refcursor",
 											((PLpgSQL_var *) (yyvsp[(1) - (1)].wdatum).datum)->refname),
-									 parser_errposition((yylsp[(1) - (1)]))));
+									 parser_errposition((yylsp[(1) - (1)]).start)));
 						(yyval.var) = (PLpgSQL_var *) (yyvsp[(1) - (1)].wdatum).datum;
 					;}
     break;
@@ -4552,7 +4552,7 @@ yyreduce:
 #line 2278 "pl_gram.y"
     {
 						/* just to give a better message than "syntax error" */
-						word_is_not_variable(&((yyvsp[(1) - (1)].word)), (yylsp[(1) - (1)]));
+						word_is_not_variable(&((yyvsp[(1) - (1)].word)), (yylsp[(1) - (1)]).start);
 					;}
     break;
 
@@ -4560,7 +4560,7 @@ yyreduce:
 #line 2283 "pl_gram.y"
     {
 						/* just to give a better message than "syntax error" */
-						cword_is_not_variable(&((yyvsp[(1) - (1)].cword)), (yylsp[(1) - (1)]));
+						cword_is_not_variable(&((yyvsp[(1) - (1)].cword)), (yylsp[(1) - (1)]).start);
 					;}
     break;
 
@@ -4579,7 +4579,7 @@ yyreduce:
 						 * scope of the names extends to the end of the
 						 * current block.
 						 */
-						int			lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]));
+						int			lineno = plpgsql_location_to_lineno((yylsp[(1) - (1)]).start);
 						PLpgSQL_exception_block *new = palloc(sizeof(PLpgSQL_exception_block));
 						PLpgSQL_variable *var;
 
@@ -4635,7 +4635,7 @@ yyreduce:
 						PLpgSQL_exception *new;
 
 						new = palloc0(sizeof(PLpgSQL_exception));
-						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (4)]));
+						new->lineno = plpgsql_location_to_lineno((yylsp[(1) - (4)]).start);
 						new->conditions = (yyvsp[(2) - (4)].condition);
 						new->action = (yyvsp[(4) - (4)].list);
 
@@ -5082,9 +5082,9 @@ static void
 current_token_is_not_variable(int tok)
 {
 	if (tok == T_WORD)
-		word_is_not_variable(&(yylval.word), yylloc);
+		word_is_not_variable(&(yylval.word), yylloc.start);
 	else if (tok == T_CWORD)
-		cword_is_not_variable(&(yylval.cword), yylloc);
+		cword_is_not_variable(&(yylval.cword), yylloc.start);
 	else
 		yyerror("syntax error");
 }
@@ -5160,7 +5160,7 @@ read_sql_construct(int until,
 	{
 		tok = yylex();
 		if (startlocation < 0)			/* remember loc of first token */
-			startlocation = yylloc;
+			startlocation = yylloc.start;
 		if (tok == until && parenlevel == 0)
 			break;
 		if (tok == until2 && parenlevel == 0)
@@ -5189,16 +5189,16 @@ read_sql_construct(int until,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("missing \"%s\" at end of SQL expression",
 								expected),
-						 parser_errposition(yylloc)));
+						 parser_errposition(yylloc.start)));
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("missing \"%s\" at end of SQL statement",
 								expected),
-						 parser_errposition(yylloc)));
+						 parser_errposition(yylloc.start)));
 		}
 		/* Remember end+1 location of last accepted token */
-		endlocation = yylloc + plpgsql_token_length();
+		endlocation = yylloc.start + plpgsql_token_length();
 	}
 
 	plpgsql_IdentifierLookup = save_IdentifierLookup;
@@ -5262,7 +5262,7 @@ read_datatype(int tok)
 		tok = yylex();
 
 	/* The current token is the start of what we'll pass to parse_datatype */
-	startlocation = yylloc;
+	startlocation = yylloc.start;
 
 	/*
 	 * If we have a simple or composite identifier, check for %TYPE and
@@ -5386,7 +5386,7 @@ read_datatype(int tok)
 
 	/* set up ds to contain complete typename text */
 	initStringInfo(&ds);
-	plpgsql_append_source_text(&ds, startlocation, yylloc);
+	plpgsql_append_source_text(&ds, startlocation, yylloc.start);
 	type_name = ds.data;
 
 	if (type_name[0] == '\0')
@@ -5478,7 +5478,7 @@ make_execsql_stmt(int firsttoken, int location, PLword *word)
 		prev_tok = tok;
 		tok = yylex();
 		if (have_into && into_end_loc < 0)
-			into_end_loc = yylloc;		/* token after the INTO part */
+			into_end_loc = yylloc.start;		/* token after the INTO part */
 		/* Detect CREATE [OR REPLACE] {FUNCTION|PROCEDURE} */
 		if (tokens[0] == 'c' && token_count < sizeof(tokens))
 		{
@@ -5527,7 +5527,7 @@ make_execsql_stmt(int firsttoken, int location, PLword *word)
 			if (have_into)
 				yyerror("INTO specified more than once");
 			have_into = true;
-			into_start_loc = yylloc;
+			into_start_loc = yylloc.start;
 			plpgsql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
 			read_into_target(&target, &have_strict);
 			plpgsql_IdentifierLookup = IDENTIFIER_LOOKUP_EXPR;
@@ -5545,10 +5545,10 @@ make_execsql_stmt(int firsttoken, int location, PLword *word)
 		 */
 		plpgsql_append_source_text(&ds, location, into_start_loc);
 		appendStringInfoSpaces(&ds, into_end_loc - into_start_loc);
-		plpgsql_append_source_text(&ds, into_end_loc, yylloc);
+		plpgsql_append_source_text(&ds, into_end_loc, yylloc.start);
 	}
 	else
-		plpgsql_append_source_text(&ds, location, yylloc);
+		plpgsql_append_source_text(&ds, location, yylloc.start);
 
 	/* trim any trailing whitespace, for neatness */
 	while (ds.len > 0 && scanner_isspace(ds.data[ds.len - 1]))
@@ -5791,7 +5791,7 @@ make_return_next_stmt(int location)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("RETURN NEXT cannot have a parameter in function with OUT parameters"),
-					 parser_errposition(yylloc)));
+					 parser_errposition(yylloc.start)));
 		new->retvarno = plpgsql_curr_compile->out_param_varno;
 	}
 	else
@@ -5950,21 +5950,21 @@ read_into_target(PLpgSQL_variable **target, bool *strict)
 			if (yylval.wdatum.datum->dtype == PLPGSQL_DTYPE_ROW ||
 				yylval.wdatum.datum->dtype == PLPGSQL_DTYPE_REC)
 			{
-				check_assignable(yylval.wdatum.datum, yylloc);
+				check_assignable(yylval.wdatum.datum, yylloc.start);
 				*target = (PLpgSQL_variable *) yylval.wdatum.datum;
 
 				if ((tok = yylex()) == ',')
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("record variable cannot be part of multiple-item INTO list"),
-							 parser_errposition(yylloc)));
+							 parser_errposition(yylloc.start)));
 				plpgsql_push_back_token(tok);
 			}
 			else
 			{
 				*target = (PLpgSQL_variable *)
 					read_into_scalar_list(NameOfDatum(&(yylval.wdatum)),
-										  yylval.wdatum.datum, yylloc);
+										  yylval.wdatum.datum, yylloc.start);
 			}
 			break;
 
@@ -6003,20 +6003,20 @@ read_into_scalar_list(char *initial_name,
 			ereport(ERROR,
 					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 					 errmsg("too many INTO variables specified"),
-					 parser_errposition(yylloc)));
+					 parser_errposition(yylloc.start)));
 
 		tok = yylex();
 		switch (tok)
 		{
 			case T_DATUM:
-				check_assignable(yylval.wdatum.datum, yylloc);
+				check_assignable(yylval.wdatum.datum, yylloc.start);
 				if (yylval.wdatum.datum->dtype == PLPGSQL_DTYPE_ROW ||
 					yylval.wdatum.datum->dtype == PLPGSQL_DTYPE_REC)
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("\"%s\" is not a scalar variable",
 									NameOfDatum(&(yylval.wdatum))),
-							 parser_errposition(yylloc)));
+							 parser_errposition(yylloc.start)));
 				fieldnames[nfields] = NameOfDatum(&(yylval.wdatum));
 				varnos[nfields++]	= yylval.wdatum.datum->dno;
 				break;
@@ -6250,7 +6250,7 @@ read_cursor_args(PLpgSQL_var *cursor, int until)
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("cursor \"%s\" has no arguments",
 							cursor->refname),
-					 parser_errposition(yylloc)));
+					 parser_errposition(yylloc.start)));
 
 		if (tok != until)
 			yyerror("syntax error");
@@ -6264,7 +6264,7 @@ read_cursor_args(PLpgSQL_var *cursor, int until)
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("cursor \"%s\" has arguments",
 						cursor->refname),
-				 parser_errposition(yylloc)));
+				 parser_errposition(yylloc.start)));
 
 	/*
 	 * Read the arguments, one by one.
@@ -6306,7 +6306,7 @@ read_cursor_args(PLpgSQL_var *cursor, int until)
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("cursor \"%s\" has no argument named \"%s\"",
 								cursor->refname, argname),
-						 parser_errposition(yylloc)));
+						 parser_errposition(yylloc.start)));
 
 			/*
 			 * Eat the ":=". We already peeked, so the error should never
@@ -6347,14 +6347,14 @@ read_cursor_args(PLpgSQL_var *cursor, int until)
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("not enough arguments for cursor \"%s\"",
 							cursor->refname),
-					 parser_errposition(yylloc)));
+					 parser_errposition(yylloc.start)));
 
 		if (endtoken == ',' && (argc == row->nfields - 1))
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("too many arguments for cursor \"%s\"",
 							cursor->refname),
-					 parser_errposition(yylloc)));
+					 parser_errposition(yylloc.start)));
 	}
 
 	/* Make positional argument list */

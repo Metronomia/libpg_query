@@ -36,12 +36,17 @@ typedef union core_YYSTYPE
 /*
  * We track token locations in terms of byte offsets from the start of the
  * source string, not the column number/line number representation that
- * bison uses by default.  Also, to minimize overhead we track only one
- * location (usually the first token location) for each construct, not
- * the beginning and ending locations as bison does by default.  It's
- * therefore sufficient to make YYLTYPE an int.
+ * bison uses by default.  Unlike upstream Postgres, which tracks only the
+ * start offset of each construct, we track both the start and the end, so
+ * that callers can recover the exact source extent of a parse node.
  */
-#define YYLTYPE  int
+typedef struct core_YYLTYPE
+{
+	int			start;			/* byte offset of first token */
+	int			end;			/* byte offset just past last token */
+} core_YYLTYPE;
+
+#define YYLTYPE  core_YYLTYPE
 
 /*
  * Another important component of the scanner's API is the token code numbers.

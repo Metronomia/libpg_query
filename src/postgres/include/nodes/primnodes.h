@@ -92,6 +92,9 @@ typedef struct RangeVar
 
 	/* token location, or -1 if unknown */
 	ParseLoc	location;
+
+	/* end of the construct (exclusive), or -1 if unknown */
+	ParseLoc	location_end;
 } RangeVar;
 
 typedef enum TableFuncType

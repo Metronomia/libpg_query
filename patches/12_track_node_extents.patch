@@ -1,0 +1,5920 @@
+--- a/src/include/parser/scanner.h
++++ b/src/include/parser/scanner.h
+@@ -36,13 +36,18 @@
+ /*
+  * We track token locations in terms of byte offsets from the start of the
+  * source string, not the column number/line number representation that
+- * bison uses by default.  Also, to minimize overhead we track only one
+- * location (usually the first token location) for each construct, not
+- * the beginning and ending locations as bison does by default.  It's
+- * therefore sufficient to make YYLTYPE an int.
++ * bison uses by default.  Unlike upstream Postgres, which tracks only the
++ * start offset of each construct, we track both the start and the end, so
++ * that callers can recover the exact source extent of a parse node.
+  */
+-#define YYLTYPE  int
++typedef struct core_YYLTYPE
++{
++	int			start;			/* byte offset of first token */
++	int			end;			/* byte offset just past last token */
++} core_YYLTYPE;
+ 
++#define YYLTYPE  core_YYLTYPE
++
+ /*
+  * Another important component of the scanner's API is the token code numbers.
+  * However, those are not defined in this file, because bison insists on
+--- a/src/include/nodes/parsenodes.h
++++ b/src/include/nodes/parsenodes.h
+@@ -293,6 +293,7 @@
+ 	NodeTag		type;
+ 	List	   *fields;			/* field names (String nodes) or A_Star */
+ 	ParseLoc	location;		/* token location, or -1 if unknown */
++	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+ } ColumnRef;
+ 
+ /*
+@@ -434,6 +435,7 @@
+ 	bool		func_variadic;	/* last argument was labeled VARIADIC */
+ 	CoercionForm funcformat;	/* how to display this node */
+ 	ParseLoc	location;		/* token location, or -1 if unknown */
++	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+ } FuncCall;
+ 
+ /*
+@@ -2160,6 +2162,9 @@
+ 	struct SelectStmt *larg;	/* left child */
+ 	struct SelectStmt *rarg;	/* right child */
+ 	/* Eventually add fields for CORRESPONDING spec here */
++
++	ParseLoc	location;		/* token location, or -1 if unknown */
++	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+ } SelectStmt;
+ 
+ 
+--- a/src/include/nodes/primnodes.h
++++ b/src/include/nodes/primnodes.h
+@@ -92,6 +92,9 @@
+ 
+ 	/* token location, or -1 if unknown */
+ 	ParseLoc	location;
++
++	/* end of the construct (exclusive), or -1 if unknown */
++	ParseLoc	location_end;
+ } RangeVar;
+ 
+ typedef enum TableFuncType
+--- a/src/backend/parser/scan.l
++++ b/src/backend/parser/scan.l
+@@ -102,12 +102,20 @@
+  * this should be done in the first such rule, else yylloc will point
+  * into the middle of the token.
+  */
+-#define SET_YYLLOC()  (*(yylloc) = yytext - yyextra->scanbuf)
++#define SET_YYLLOC()  (yylloc->start = yytext - yyextra->scanbuf, \
++					   yylloc->end = yylloc->start + yyleng)
++
++/*
++ * Record the true end of a token that spans several lexer rules.  The rules
++ * that assemble such tokens already track the end offset in yyllocend (see
++ * the lexer_track_yyllocend patch); this publishes it to the parser.
++ */
++#define SET_YYLLOCEND()  (yylloc->end = yyextra->yyllocend)
+ 
+ /*
+  * Advance yylloc by the given number of bytes.
+  */
+-#define ADVANCE_YYLLOC(delta)  ( *(yylloc) += (delta) )
++#define ADVANCE_YYLLOC(delta)  ( yylloc->start += (delta) )
+ 
+ /*
+  * Sometimes, we do want yylloc to point into the middle of a token; this is
+@@ -131,7 +139,7 @@
+ 
+ #define yyerror(msg)  scanner_yyerror(msg, yyscanner)
+ 
+-#define lexer_errposition()  scanner_errposition(*(yylloc), yyscanner)
++#define lexer_errposition()  scanner_errposition(yylloc->start, yyscanner)
+ 
+ static void check_string_escape_warning(unsigned char ychar, core_yyscan_t yyscanner);
+ static void check_escape_warning(core_yyscan_t yyscanner);
+@@ -482,7 +490,7 @@
+ 					if (yyextra->xcdepth <= 0)
+ 					{
+ 						BEGIN(INITIAL);
+-						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 						return C_COMMENT;
+ 					}
+ 					else
+@@ -560,7 +568,7 @@
+ 					{
+ 						/* If NCHAR isn't a keyword, just return "n" */
+ 						yylval->str = pstrdup("n");
+-						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 						return IDENT;
+ 					}
+ 				}
+@@ -629,11 +637,11 @@
+ 					{
+ 						case xb:
+ 							yylval->str = litbufdup(yyscanner);
+-							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 							return BCONST;
+ 						case xh:
+ 							yylval->str = litbufdup(yyscanner);
+-							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 							return XCONST;
+ 						case xq:
+ 						case xe:
+@@ -646,11 +654,11 @@
+ 											   yyextra->literallen,
+ 											   false);
+ 							yylval->str = litbufdup(yyscanner);
+-							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 							return SCONST;
+ 						case xus:
+ 							yylval->str = litbufdup(yyscanner);
+-							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 							return USCONST;
+ 						default:
+ 							yyerror("unhandled previous state in xqs");
+@@ -788,7 +796,7 @@
+ 						yyextra->dolqstart = NULL;
+ 						BEGIN(INITIAL);
+ 						yylval->str = litbufdup(yyscanner);
+-						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 						return SCONST;
+ 					}
+ 					else
+@@ -834,7 +842,7 @@
+ 					if (yyextra->literallen >= NAMEDATALEN)
+ 						truncate_identifier(ident, yyextra->literallen, true);
+ 					yylval->str = ident;
+-					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 					return IDENT;
+ 				}
+ <xui>{dquote}	{
+@@ -843,7 +851,7 @@
+ 						yyerror("zero-length delimited identifier");
+ 					/* can't truncate till after we de-escape the ident */
+ 					yylval->str = litbufdup(yyscanner);
+-					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 					return UIDENT;
+ 				}
+ <xd,xui>{xddouble}	{
+@@ -863,7 +871,7 @@
+ 					/* and treat it as {identifier} */
+ 					ident = downcase_truncate_identifier(yytext, yyleng, true);
+ 					yylval->str = ident;
+-					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 					return IDENT;
+ 				}
+ 
+@@ -1112,7 +1120,7 @@
+ 					 */
+ 					ident = downcase_truncate_identifier(yytext, yyleng, true);
+ 					yylval->str = ident;
+-					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 					return IDENT;
+ 				}
+ 
+@@ -1243,7 +1251,7 @@
+ void
+ scanner_yyerror(const char *message, core_yyscan_t yyscanner)
+ {
+-	const char *loc = yyextra->scanbuf + *yylloc;
++	const char *loc = yyextra->scanbuf + yylloc->start;
+ 
+ 	if (*loc == YY_END_OF_BUFFER_CHAR)
+ 	{
+@@ -1410,7 +1418,7 @@
+ 	 * We expect that pg_unicode_to_server() will complain about any
+ 	 * unconvertible code point, so we don't have to set saw_non_ascii.
+ 	 */
+-	setup_scanner_errposition_callback(&scbstate, yyscanner, *(yylloc));
++	setup_scanner_errposition_callback(&scbstate, yyscanner, yylloc->start);
+ 	pg_unicode_to_server(c, (unsigned char *) buf);
+ 	cancel_scanner_errposition_callback(&scbstate);
+ 	addlit(buf, strlen(buf), yyscanner);
+--- a/src/backend/parser/parser.c
++++ b/src/backend/parser/parser.c
+@@ -66,7 +66,8 @@
+ 
+ 		yyextra.have_lookahead = true;
+ 		yyextra.lookahead_token = mode_token[mode];
+-		yyextra.lookahead_yylloc = 0;
++		yyextra.lookahead_yylloc.start = 0;
++		yyextra.lookahead_yylloc.end = 0;
+ 		yyextra.lookahead_end = NULL;
+ 	}
+ 
+@@ -151,7 +152,7 @@
+ 			break;
+ 		case UIDENT:
+ 		case USCONST:
+-			cur_token_length = strlen(yyextra->core_yy_extra.scanbuf + *llocp);
++			cur_token_length = strlen(yyextra->core_yy_extra.scanbuf + llocp->start);
+ 			break;
+ 		case WITHOUT:
+ 			cur_token_length = 7;
+@@ -169,7 +170,7 @@
+ 	 * it to fully revert the lookahead call for error reporting purposes.
+ 	 */
+ 	yyextra->lookahead_end = yyextra->core_yy_extra.scanbuf +
+-		*llocp + cur_token_length;
++		llocp->start + cur_token_length;
+ 	Assert(*(yyextra->lookahead_end) == '\0');
+ 
+ 	/*
+@@ -281,14 +282,19 @@
+ 					scanner_yyerror("invalid Unicode escape character",
+ 									yyscanner);
+ 
+-				/* Now restore *llocp; errors will point to first token */
++				/*
++				 * Now restore *llocp; errors will point to first token.
++				 * All three tokens are consumed as one, so the extent has
++				 * to run through the end of the third one.
++				 */
++				cur_yylloc.end = llocp->end;
+ 				*llocp = cur_yylloc;
+ 
+ 				/* Apply Unicode conversion */
+ 				lvalp->core_yystype.str =
+ 					str_udeescape(lvalp->core_yystype.str,
+ 								  escstr[0],
+-								  *llocp,
++								  llocp->start,
+ 								  yyscanner);
+ 
+ 				/*
+@@ -304,7 +310,7 @@
+ 				lvalp->core_yystype.str =
+ 					str_udeescape(lvalp->core_yystype.str,
+ 								  '\\',
+-								  *llocp,
++								  llocp->start,
+ 								  yyscanner);
+ 			}
+ 
+--- a/src/backend/parser/gram.y
++++ b/src/backend/parser/gram.y
+@@ -67,15 +67,32 @@
+ 
+ 
+ /*
+- * Location tracking support --- simpler than bison's default, since we only
+- * want to track the start position not the end position of each nonterminal.
++ * Location tracking support --- we track both the start position and the end
++ * position of each nonterminal, so that the source extent of a parse node can
++ * be recovered.  The start is taken from the first component and the end from
++ * the last, which is bison's default behaviour.
+  */
+ #define YYLLOC_DEFAULT(Current, Rhs, N) \
+ 	do { \
+ 		if ((N) > 0) \
+-			(Current) = (Rhs)[1]; \
++		{ \
++			int		_yyi; \
++			(Current).start = (Rhs)[1].start; \
++			(Current).end = (-1); \
++			for (_yyi = (N); _yyi > 0; _yyi--) \
++			{ \
++				if ((Rhs)[_yyi].end >= 0) \
++				{ \
++					(Current).end = (Rhs)[_yyi].end; \
++					break; \
++				} \
++			} \
++		} \
+ 		else \
+-			(Current) = (-1); \
++		{ \
++			(Current).start = (-1); \
++			(Current).end = (-1); \
++		} \
+ 	} while (0)
+ 
+ /*
+@@ -88,7 +105,7 @@
+  * copy it during each subsequent reduction, leaving us with -1 for the
+  * location even when the list is not empty.  To fix that, do this in the
+  * action for the nonempty rule(s):
+- *		if (@$ < 0) @$ = @2;
++ *		if (@$.start < 0) @$.start = @2.start;
+  * (Although we have many nonterminals that follow this pattern, we only
+  * bother with fixing @$ like this when the nonterminal's parse location
+  * is actually referenced in some rule.)
+@@ -169,6 +186,9 @@
+ static void updateRawStmtEnd(RawStmt *rs, int end_location);
+ static Node *makeColumnRef(char *colname, List *indirection,
+ 						   int location, core_yyscan_t yyscanner);
++static Node *nodeExtent(Node *n, YYLTYPE loc);
++static FuncCall *fcExtent(FuncCall *n, YYLTYPE loc);
++static RangeVar *rvExtent(RangeVar *n, YYLTYPE loc);
+ static Node *makeTypeCast(Node *arg, TypeName *typename, int location);
+ static Node *makeStringConstCast(char *str, int location, TypeName *typename);
+ static Node *makeIntConst(int val, int location);
+@@ -963,8 +983,8 @@
+ /*
+  * At top level, we wrap each stmt with a RawStmt node carrying start location
+  * and length of the stmt's text.  Notice that the start loc/len are driven
+- * entirely from semicolon locations (@2).  It would seem natural to use
+- * @1 or @3 to get the true start location of a stmt, but that doesn't work
++ * entirely from semicolon locations (@2.start).  It would seem natural to use
++ * @1.start or @3.start to get the true start location of a stmt, but that doesn't work
+  * for statements that can start with empty nonterminals (opt_with_clause is
+  * the main offender here); as noted in the comments for YYLLOC_DEFAULT,
+  * we'd get -1 for the location in such cases.
+@@ -975,10 +995,10 @@
+ 					if ($1 != NIL)
+ 					{
+ 						/* update length of previous stmt */
+-						updateRawStmtEnd(llast_node(RawStmt, $1), @2);
++						updateRawStmtEnd(llast_node(RawStmt, $1), @2.start);
+ 					}
+ 					if ($3 != NULL)
+-						$$ = lappend($1, makeRawStmt($3, @2 + 1));
++						$$ = lappend($1, makeRawStmt($3, @2.start + 1));
+ 					else
+ 						$$ = $1;
+ 				}
+@@ -1211,16 +1231,16 @@
+ 			PASSWORD Sconst
+ 				{
+ 					$$ = makeDefElem("password",
+-									 (Node *) makeString($2), @1);
++									 (Node *) makeString($2), @1.start);
+ 				}
+ 			| PASSWORD PARAM
+ 				{
+ 					$$ = makeDefElem("password",
+-						(Node *)makeParamRef($2, @2), @1);
++						(Node *)makeParamRef($2, @2.start), @1.start);
+ 				}
+ 			| PASSWORD NULL_P
+ 				{
+-					$$ = makeDefElem("password", NULL, @1);
++					$$ = makeDefElem("password", NULL, @1.start);
+ 				}
+ 			| ENCRYPTED PASSWORD Sconst
+ 				{
+@@ -1230,7 +1250,7 @@
+ 					 * ENCRYPTED PASSWORD.
+ 					 */
+ 					$$ = makeDefElem("password",
+-									 (Node *) makeString($3), @1);
++									 (Node *) makeString($3), @1.start);
+ 				}
+ 			| ENCRYPTED PASSWORD PARAM
+ 				{
+@@ -1240,7 +1260,7 @@
+ 					 * ENCRYPTED PASSWORD.
+ 					 */
+ 					$$ = makeDefElem("password",
+-									 (Node *)makeParamRef($3, @3), @1);
++									 (Node *)makeParamRef($3, @3.start), @1.start);
+ 				}
+ 			| UNENCRYPTED PASSWORD Sconst
+ 				{
+@@ -1248,24 +1268,24 @@
+ 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 							 errmsg("UNENCRYPTED PASSWORD is no longer supported"),
+ 							 errhint("Remove UNENCRYPTED to store the password in encrypted form instead."),
+-							 parser_errposition(@1)));
++							 parser_errposition(@1.start)));
+ 				}
+ 			| INHERIT
+ 				{
+-					$$ = makeDefElem("inherit", (Node *) makeBoolean(true), @1);
++					$$ = makeDefElem("inherit", (Node *) makeBoolean(true), @1.start);
+ 				}
+ 			| CONNECTION LIMIT SignedIconst
+ 				{
+-					$$ = makeDefElem("connectionlimit", (Node *) makeInteger($3), @1);
++					$$ = makeDefElem("connectionlimit", (Node *) makeInteger($3), @1.start);
+ 				}
+ 			| VALID UNTIL Sconst
+ 				{
+-					$$ = makeDefElem("validUntil", (Node *) makeString($3), @1);
++					$$ = makeDefElem("validUntil", (Node *) makeString($3), @1.start);
+ 				}
+ 		/*	Supported but not documented for roles, for use by ALTER GROUP. */
+ 			| USER role_list
+ 				{
+-					$$ = makeDefElem("rolemembers", (Node *) $2, @1);
++					$$ = makeDefElem("rolemembers", (Node *) $2, @1.start);
+ 				}
+ 			| IDENT
+ 				{
+@@ -1275,42 +1295,42 @@
+ 					 * size of the main parser.
+ 					 */
+ 					if (strcmp($1, "superuser") == 0)
+-						$$ = makeDefElem("superuser", (Node *) makeBoolean(true), @1);
++						$$ = makeDefElem("superuser", (Node *) makeBoolean(true), @1.start);
+ 					else if (strcmp($1, "nosuperuser") == 0)
+-						$$ = makeDefElem("superuser", (Node *) makeBoolean(false), @1);
++						$$ = makeDefElem("superuser", (Node *) makeBoolean(false), @1.start);
+ 					else if (strcmp($1, "createrole") == 0)
+-						$$ = makeDefElem("createrole", (Node *) makeBoolean(true), @1);
++						$$ = makeDefElem("createrole", (Node *) makeBoolean(true), @1.start);
+ 					else if (strcmp($1, "nocreaterole") == 0)
+-						$$ = makeDefElem("createrole", (Node *) makeBoolean(false), @1);
++						$$ = makeDefElem("createrole", (Node *) makeBoolean(false), @1.start);
+ 					else if (strcmp($1, "replication") == 0)
+-						$$ = makeDefElem("isreplication", (Node *) makeBoolean(true), @1);
++						$$ = makeDefElem("isreplication", (Node *) makeBoolean(true), @1.start);
+ 					else if (strcmp($1, "noreplication") == 0)
+-						$$ = makeDefElem("isreplication", (Node *) makeBoolean(false), @1);
++						$$ = makeDefElem("isreplication", (Node *) makeBoolean(false), @1.start);
+ 					else if (strcmp($1, "createdb") == 0)
+-						$$ = makeDefElem("createdb", (Node *) makeBoolean(true), @1);
++						$$ = makeDefElem("createdb", (Node *) makeBoolean(true), @1.start);
+ 					else if (strcmp($1, "nocreatedb") == 0)
+-						$$ = makeDefElem("createdb", (Node *) makeBoolean(false), @1);
++						$$ = makeDefElem("createdb", (Node *) makeBoolean(false), @1.start);
+ 					else if (strcmp($1, "login") == 0)
+-						$$ = makeDefElem("canlogin", (Node *) makeBoolean(true), @1);
++						$$ = makeDefElem("canlogin", (Node *) makeBoolean(true), @1.start);
+ 					else if (strcmp($1, "nologin") == 0)
+-						$$ = makeDefElem("canlogin", (Node *) makeBoolean(false), @1);
++						$$ = makeDefElem("canlogin", (Node *) makeBoolean(false), @1.start);
+ 					else if (strcmp($1, "bypassrls") == 0)
+-						$$ = makeDefElem("bypassrls", (Node *) makeBoolean(true), @1);
++						$$ = makeDefElem("bypassrls", (Node *) makeBoolean(true), @1.start);
+ 					else if (strcmp($1, "nobypassrls") == 0)
+-						$$ = makeDefElem("bypassrls", (Node *) makeBoolean(false), @1);
++						$$ = makeDefElem("bypassrls", (Node *) makeBoolean(false), @1.start);
+ 					else if (strcmp($1, "noinherit") == 0)
+ 					{
+ 						/*
+ 						 * Note that INHERIT is a keyword, so it's handled by main parser, but
+ 						 * NOINHERIT is handled here.
+ 						 */
+-						$$ = makeDefElem("inherit", (Node *) makeBoolean(false), @1);
++						$$ = makeDefElem("inherit", (Node *) makeBoolean(false), @1.start);
+ 					}
+ 					else
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_SYNTAX_ERROR),
+ 								 errmsg("unrecognized role option \"%s\"", $1),
+-									 parser_errposition(@1)));
++									 parser_errposition(@1.start)));
+ 				}
+ 		;
+ 
+@@ -1319,23 +1339,23 @@
+ 			/* The following are not supported by ALTER ROLE/USER/GROUP */
+ 			| SYSID Iconst
+ 				{
+-					$$ = makeDefElem("sysid", (Node *) makeInteger($2), @1);
++					$$ = makeDefElem("sysid", (Node *) makeInteger($2), @1.start);
+ 				}
+ 			| ADMIN role_list
+ 				{
+-					$$ = makeDefElem("adminmembers", (Node *) $2, @1);
++					$$ = makeDefElem("adminmembers", (Node *) $2, @1.start);
+ 				}
+ 			| ROLE role_list
+ 				{
+-					$$ = makeDefElem("rolemembers", (Node *) $2, @1);
++					$$ = makeDefElem("rolemembers", (Node *) $2, @1.start);
+ 				}
+ 			| IN_P ROLE role_list
+ 				{
+-					$$ = makeDefElem("addroleto", (Node *) $3, @1);
++					$$ = makeDefElem("addroleto", (Node *) $3, @1.start);
+ 				}
+ 			| IN_P GROUP_P role_list
+ 				{
+-					$$ = makeDefElem("addroleto", (Node *) $3, @1);
++					$$ = makeDefElem("addroleto", (Node *) $3, @1.start);
+ 				}
+ 		;
+ 
+@@ -1525,7 +1545,7 @@
+ 					n->role = $3;
+ 					n->action = $4;
+ 					n->options = list_make1(makeDefElem("rolemembers",
+-														(Node *) $6, @6));
++														(Node *) $6, @6.start));
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -1575,7 +1595,7 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 								 errmsg("CREATE SCHEMA IF NOT EXISTS cannot include schema elements"),
+-								 parser_errposition(@9)));
++								 parser_errposition(@9.start)));
+ 					n->schemaElts = $9;
+ 					n->if_not_exists = true;
+ 					$$ = (Node *) n;
+@@ -1591,7 +1611,7 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 								 errmsg("CREATE SCHEMA IF NOT EXISTS cannot include schema elements"),
+-								 parser_errposition(@7)));
++								 parser_errposition(@7.start)));
+ 					n->schemaElts = $7;
+ 					n->if_not_exists = true;
+ 					$$ = (Node *) n;
+@@ -1601,8 +1621,8 @@
+ OptSchemaEltList:
+ 			OptSchemaEltList schema_stmt
+ 				{
+-					if (@$ < 0)			/* see comments for YYLLOC_DEFAULT */
+-						@$ = @2;
++					if (@$.start < 0)	/* see comments for YYLLOC_DEFAULT */
++						@$.start = @2.start;
+ 					$$ = lappend($1, $2);
+ 				}
+ 			| /* EMPTY */
+@@ -1743,7 +1763,7 @@
+ 					ereport(ERROR,
+ 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 							 errmsg("current database cannot be changed"),
+-							 parser_errposition(@2)));
++							 parser_errposition(@2.start)));
+ 					$$ = NULL; /*not reached*/
+ 				}
+ 			| SCHEMA Sconst
+@@ -1752,7 +1772,7 @@
+ 
+ 					n->kind = VAR_SET_VALUE;
+ 					n->name = "search_path";
+-					n->args = list_make1(makeStringConst($2, @2));
++					n->args = list_make1(makeStringConst($2, @2.start));
+ 					$$ = n;
+ 				}
+ 			| SCHEMA PARAM
+@@ -1760,7 +1780,7 @@
+ 					VariableSetStmt *n = makeNode(VariableSetStmt);
+ 					n->kind = VAR_SET_VALUE;
+ 					n->name = "search_path";
+-					n->args = list_make1(makeParamRef($2, @2));
++					n->args = list_make1(makeParamRef($2, @2.start));
+ 					$$ = n;
+ 				}
+ 			| NAMES opt_encoding
+@@ -1770,7 +1790,7 @@
+ 					n->kind = VAR_SET_VALUE;
+ 					n->name = "client_encoding";
+ 					if ($2 != NULL)
+-						n->args = list_make1(makeStringConst($2, @2));
++						n->args = list_make1(makeStringConst($2, @2.start));
+ 					else
+ 						n->kind = VAR_SET_DEFAULT;
+ 					$$ = n;
+@@ -1781,7 +1801,7 @@
+ 
+ 					n->kind = VAR_SET_VALUE;
+ 					n->name = "role";
+-					n->args = list_make1(makeStringConst($2, @2));
++					n->args = list_make1(makeStringConst($2, @2.start));
+ 					$$ = n;
+ 				}
+ 			| ROLE PARAM
+@@ -1789,7 +1809,7 @@
+ 					VariableSetStmt *n = makeNode(VariableSetStmt);
+ 					n->kind = VAR_SET_VALUE;
+ 					n->name = "role";
+-					n->args = list_make1(makeParamRef($2, @2));
++					n->args = list_make1(makeParamRef($2, @2.start));
+ 					$$ = n;
+ 				}
+ 			| SESSION AUTHORIZATION NonReservedWord_or_Sconst
+@@ -1798,7 +1818,7 @@
+ 
+ 					n->kind = VAR_SET_VALUE;
+ 					n->name = "session_authorization";
+-					n->args = list_make1(makeStringConst($3, @3));
++					n->args = list_make1(makeStringConst($3, @3.start));
+ 					$$ = n;
+ 				}
+ 			| SESSION AUTHORIZATION PARAM
+@@ -1806,7 +1826,7 @@
+ 					VariableSetStmt *n = makeNode(VariableSetStmt);
+ 					n->kind = VAR_SET_VALUE;
+ 					n->name = "session_authorization";
+-					n->args = list_make1(makeParamRef($3, @3));
++					n->args = list_make1(makeParamRef($3, @3.start));
+ 					$$ = n;
+ 				}
+ 			| SESSION AUTHORIZATION DEFAULT
+@@ -1823,7 +1843,7 @@
+ 
+ 					n->kind = VAR_SET_VALUE;
+ 					n->name = "xmloption";
+-					n->args = list_make1(makeStringConst($3 == XMLOPTION_DOCUMENT ? "DOCUMENT" : "CONTENT", @3));
++					n->args = list_make1(makeStringConst($3 == XMLOPTION_DOCUMENT ? "DOCUMENT" : "CONTENT", @3.start));
+ 					$$ = n;
+ 				}
+ 			/* Special syntaxes invented by PostgreSQL: */
+@@ -1833,7 +1853,7 @@
+ 
+ 					n->kind = VAR_SET_MULTI;
+ 					n->name = "TRANSACTION SNAPSHOT";
+-					n->args = list_make1(makeStringConst($3, @3));
++					n->args = list_make1(makeStringConst($3, @3.start));
+ 					$$ = n;
+ 				}
+ 		;
+@@ -1848,11 +1868,11 @@
+ 		;
+ 
+ var_value:	opt_boolean_or_string
+-				{ $$ = makeStringConst($1, @1); }
++				{ $$ = makeStringConst($1, @1.start); }
+ 			| NumericOnly
+-				{ $$ = makeAConst($1, @1); }
++				{ $$ = makeAConst($1, @1.start); }
+ 			| PARAM
+-				{ $$ = makeParamRef($1, @1); }
++				{ $$ = makeParamRef($1, @1.start); }
+ 		;
+ 
+ iso_level:	READ UNCOMMITTED						{ $$ = "read uncommitted"; }
+@@ -1884,15 +1904,15 @@
+ zone_value:
+ 			Sconst
+ 				{
+-					$$ = makeStringConst($1, @1);
++					$$ = makeStringConst($1, @1.start);
+ 				}
+ 			| PARAM
+ 				{
+-					$$ = makeParamRef($1, @1);
++					$$ = makeParamRef($1, @1.start);
+ 				}
+ 			| IDENT
+ 				{
+-					$$ = makeStringConst($1, @1);
++					$$ = makeStringConst($1, @1.start);
+ 				}
+ 			| ConstInterval Sconst opt_interval
+ 				{
+@@ -1906,20 +1926,20 @@
+ 							ereport(ERROR,
+ 									(errcode(ERRCODE_SYNTAX_ERROR),
+ 									 errmsg("time zone interval must be HOUR or HOUR TO MINUTE"),
+-									 parser_errposition(@3)));
++									 parser_errposition(@3.start)));
+ 					}
+ 					t->typmods = $3;
+-					$$ = makeStringConstCast($2, @2, t);
++					$$ = makeStringConstCast($2, @2.start, t);
+ 				}
+ 			| ConstInterval '(' Iconst ')' Sconst
+ 				{
+ 					TypeName   *t = $1;
+ 
+ 					t->typmods = list_make2(makeIntConst(INTERVAL_FULL_RANGE, -1),
+-											makeIntConst($3, @3));
+-					$$ = makeStringConstCast($5, @5, t);
++											makeIntConst($3, @3.start));
++					$$ = makeStringConstCast($5, @5.start, t);
+ 				}
+-			| NumericOnly							{ $$ = makeAConst($1, @1); }
++			| NumericOnly							{ $$ = makeAConst($1, @1.start); }
+ 			| DEFAULT								{ $$ = NULL; }
+ 			| LOCAL									{ $$ = NULL; }
+ 		;
+@@ -2533,7 +2553,7 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+ 								 errmsg("column number must be in range from 1 to %d", PG_INT16_MAX),
+-								 parser_errposition(@3)));
++								 parser_errposition(@3.start)));
+ 
+ 					n->subtype = AT_SetStatistics;
+ 					n->num = (int16) $3;
+@@ -2589,7 +2609,7 @@
+ 					c->contype = CONSTR_IDENTITY;
+ 					c->generated_when = $6;
+ 					c->options = $9;
+-					c->location = @5;
++					c->location = @5.start;
+ 
+ 					n->subtype = AT_AddIdentity;
+ 					n->name = $3;
+@@ -2665,7 +2685,7 @@
+ 					def->typeName = $6;
+ 					def->collClause = (CollateClause *) $7;
+ 					def->raw_default = $8;
+-					def->location = @3;
++					def->location = @3.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			/* ALTER FOREIGN TABLE <name> ALTER [COLUMN] <colname> OPTIONS */
+@@ -2697,7 +2717,7 @@
+ 					n->def = (Node *) c;
+ 					c->contype = CONSTR_FOREIGN; /* others not supported, yet */
+ 					c->conname = $3;
+-					processCASbits($4, @4, "FOREIGN KEY",
++					processCASbits($4, @4.start, "FOREIGN KEY",
+ 									&c->deferrable,
+ 									&c->initdeferred,
+ 									NULL, NULL, yyscanner);
+@@ -2904,7 +2924,7 @@
+ 					AlterTableCmd *n = makeNode(AlterTableCmd);
+ 					TypeName   *def = makeTypeNameFromNameList($2);
+ 
+-					def->location = @2;
++					def->location = @2.start;
+ 					n->subtype = AT_AddOf;
+ 					n->def = (Node *) def;
+ 					$$ = (Node *) n;
+@@ -3025,7 +3045,7 @@
+ 
+ 					n->arg = NULL;
+ 					n->collname = $2;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| /* EMPTY */				{ $$ = NULL; }
+@@ -3088,20 +3108,20 @@
+ reloption_elem:
+ 			ColLabel '=' def_arg
+ 				{
+-					$$ = makeDefElem($1, (Node *) $3, @1);
++					$$ = makeDefElem($1, (Node *) $3, @1.start);
+ 				}
+ 			| ColLabel
+ 				{
+-					$$ = makeDefElem($1, NULL, @1);
++					$$ = makeDefElem($1, NULL, @1.start);
+ 				}
+ 			| ColLabel '.' ColLabel '=' def_arg
+ 				{
+ 					$$ = makeDefElemExtended($1, $3, (Node *) $5,
+-											 DEFELEM_UNSPEC, @1);
++											 DEFELEM_UNSPEC, @1.start);
+ 				}
+ 			| ColLabel '.' ColLabel
+ 				{
+-					$$ = makeDefElemExtended($1, $3, NULL, DEFELEM_UNSPEC, @1);
++					$$ = makeDefElemExtended($1, $3, NULL, DEFELEM_UNSPEC, @1.start);
+ 				}
+ 		;
+ 
+@@ -3115,11 +3135,11 @@
+ alter_identity_column_option:
+ 			RESTART
+ 				{
+-					$$ = makeDefElem("restart", NULL, @1);
++					$$ = makeDefElem("restart", NULL, @1.start);
+ 				}
+ 			| RESTART opt_with NumericOnly
+ 				{
+-					$$ = makeDefElem("restart", (Node *) $3, @1);
++					$$ = makeDefElem("restart", (Node *) $3, @1.start);
+ 				}
+ 			| SET SeqOptElem
+ 				{
+@@ -3129,12 +3149,12 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_SYNTAX_ERROR),
+ 								 errmsg("sequence option \"%s\" not supported here", $2->defname),
+-								 parser_errposition(@2)));
++								 parser_errposition(@2.start)));
+ 					$$ = $2;
+ 				}
+ 			| SET GENERATED generated_when
+ 				{
+-					$$ = makeDefElem("generated", (Node *) makeInteger($3), @1);
++					$$ = makeDefElem("generated", (Node *) makeInteger($3), @1.start);
+ 				}
+ 		;
+ 
+@@ -3197,7 +3217,7 @@
+ 								(errcode(ERRCODE_SYNTAX_ERROR),
+ 								 errmsg("remainder for hash partition must be specified")));
+ 
+-					n->location = @3;
++					n->location = @3.start;
+ 
+ 					$$ = n;
+ 				}
+@@ -3210,7 +3230,7 @@
+ 					n->strategy = PARTITION_STRATEGY_LIST;
+ 					n->is_default = false;
+ 					n->listdatums = $5;
+-					n->location = @3;
++					n->location = @3.start;
+ 
+ 					$$ = n;
+ 				}
+@@ -3224,7 +3244,7 @@
+ 					n->is_default = false;
+ 					n->lowerdatums = $5;
+ 					n->upperdatums = $9;
+-					n->location = @3;
++					n->location = @3.start;
+ 
+ 					$$ = n;
+ 				}
+@@ -3235,7 +3255,7 @@
+ 					PartitionBoundSpec *n = makeNode(PartitionBoundSpec);
+ 
+ 					n->is_default = true;
+-					n->location = @1;
++					n->location = @1.start;
+ 
+ 					$$ = n;
+ 				}
+@@ -3244,7 +3264,7 @@
+ hash_partbound_elem:
+ 		NonReservedWord Iconst
+ 			{
+-				$$ = makeDefElem($1, (Node *) makeInteger($2), @1);
++				$$ = makeDefElem($1, (Node *) makeInteger($2), @1.start);
+ 			}
+ 		;
+ 
+@@ -3272,7 +3292,7 @@
+ 					AlterTableStmt *n = makeNode(AlterTableStmt);
+ 
+ 					/* can't use qualified_name, sigh */
+-					n->relation = makeRangeVarFromAnyName($3, @3, yyscanner);
++					n->relation = rvExtent(makeRangeVarFromAnyName($3, @3.start, yyscanner), @$);
+ 					n->cmds = $4;
+ 					n->objtype = OBJECT_TYPE;
+ 					$$ = (Node *) n;
+@@ -3331,7 +3351,7 @@
+ 					def->typeName = $6;
+ 					def->collClause = (CollateClause *) $7;
+ 					def->raw_default = NULL;
+-					def->location = @3;
++					def->location = @3.start;
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -3404,13 +3424,13 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_SYNTAX_ERROR),
+ 								 errmsg("STDIN/STDOUT not allowed with PROGRAM"),
+-								 parser_errposition(@8)));
++								 parser_errposition(@8.start)));
+ 
+ 					if (!n->is_from && n->whereClause != NULL)
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_SYNTAX_ERROR),
+ 								 errmsg("WHERE clause not allowed with COPY TO"),
+-								 parser_errposition(@11)));
++								 parser_errposition(@11.start)));
+ 
+ 					n->options = NIL;
+ 					/* Concatenate user-supplied flags */
+@@ -3438,7 +3458,7 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_SYNTAX_ERROR),
+ 								 errmsg("STDIN/STDOUT not allowed with PROGRAM"),
+-								 parser_errposition(@5)));
++								 parser_errposition(@5.start)));
+ 
+ 					$$ = (Node *) n;
+ 				}
+@@ -3478,63 +3498,63 @@
+ copy_opt_item:
+ 			BINARY
+ 				{
+-					$$ = makeDefElem("format", (Node *) makeString("binary"), @1);
++					$$ = makeDefElem("format", (Node *) makeString("binary"), @1.start);
+ 				}
+ 			| FREEZE
+ 				{
+-					$$ = makeDefElem("freeze", (Node *) makeBoolean(true), @1);
++					$$ = makeDefElem("freeze", (Node *) makeBoolean(true), @1.start);
+ 				}
+ 			| DELIMITER opt_as Sconst
+ 				{
+-					$$ = makeDefElem("delimiter", (Node *) makeString($3), @1);
++					$$ = makeDefElem("delimiter", (Node *) makeString($3), @1.start);
+ 				}
+ 			| NULL_P opt_as Sconst
+ 				{
+-					$$ = makeDefElem("null", (Node *) makeString($3), @1);
++					$$ = makeDefElem("null", (Node *) makeString($3), @1.start);
+ 				}
+ 			| CSV
+ 				{
+-					$$ = makeDefElem("format", (Node *) makeString("csv"), @1);
++					$$ = makeDefElem("format", (Node *) makeString("csv"), @1.start);
+ 				}
+ 			| HEADER_P
+ 				{
+-					$$ = makeDefElem("header", (Node *) makeBoolean(true), @1);
++					$$ = makeDefElem("header", (Node *) makeBoolean(true), @1.start);
+ 				}
+ 			| QUOTE opt_as Sconst
+ 				{
+-					$$ = makeDefElem("quote", (Node *) makeString($3), @1);
++					$$ = makeDefElem("quote", (Node *) makeString($3), @1.start);
+ 				}
+ 			| ESCAPE opt_as Sconst
+ 				{
+-					$$ = makeDefElem("escape", (Node *) makeString($3), @1);
++					$$ = makeDefElem("escape", (Node *) makeString($3), @1.start);
+ 				}
+ 			| FORCE QUOTE columnList
+ 				{
+-					$$ = makeDefElem("force_quote", (Node *) $3, @1);
++					$$ = makeDefElem("force_quote", (Node *) $3, @1.start);
+ 				}
+ 			| FORCE QUOTE '*'
+ 				{
+-					$$ = makeDefElem("force_quote", (Node *) makeNode(A_Star), @1);
++					$$ = makeDefElem("force_quote", (Node *) makeNode(A_Star), @1.start);
+ 				}
+ 			| FORCE NOT NULL_P columnList
+ 				{
+-					$$ = makeDefElem("force_not_null", (Node *) $4, @1);
++					$$ = makeDefElem("force_not_null", (Node *) $4, @1.start);
+ 				}
+ 			| FORCE NOT NULL_P '*'
+ 				{
+-					$$ = makeDefElem("force_not_null", (Node *) makeNode(A_Star), @1);
++					$$ = makeDefElem("force_not_null", (Node *) makeNode(A_Star), @1.start);
+ 				}
+ 			| FORCE NULL_P columnList
+ 				{
+-					$$ = makeDefElem("force_null", (Node *) $3, @1);
++					$$ = makeDefElem("force_null", (Node *) $3, @1.start);
+ 				}
+ 			| FORCE NULL_P '*'
+ 				{
+-					$$ = makeDefElem("force_null", (Node *) makeNode(A_Star), @1);
++					$$ = makeDefElem("force_null", (Node *) makeNode(A_Star), @1.start);
+ 				}
+ 			| ENCODING Sconst
+ 				{
+-					$$ = makeDefElem("encoding", (Node *) makeString($2), @1);
++					$$ = makeDefElem("encoding", (Node *) makeString($2), @1.start);
+ 				}
+ 		;
+ 
+@@ -3543,7 +3563,7 @@
+ opt_binary:
+ 			BINARY
+ 				{
+-					$$ = makeDefElem("format", (Node *) makeString("binary"), @1);
++					$$ = makeDefElem("format", (Node *) makeString("binary"), @1.start);
+ 				}
+ 			| /*EMPTY*/								{ $$ = NULL; }
+ 		;
+@@ -3551,7 +3571,7 @@
+ copy_delimiter:
+ 			opt_using DELIMITERS Sconst
+ 				{
+-					$$ = makeDefElem("delimiter", (Node *) makeString($3), @2);
++					$$ = makeDefElem("delimiter", (Node *) makeString($3), @2.start);
+ 				}
+ 			| /*EMPTY*/								{ $$ = NULL; }
+ 		;
+@@ -3576,7 +3596,7 @@
+ copy_generic_opt_elem:
+ 			ColLabel copy_generic_opt_arg
+ 				{
+-					$$ = makeDefElem($1, $2, @1);
++					$$ = makeDefElem($1, $2, @1.start);
+ 				}
+ 		;
+ 
+@@ -3665,7 +3685,7 @@
+ 					n->inhRelations = NIL;
+ 					n->partspec = $8;
+ 					n->ofTypename = makeTypeNameFromNameList($6);
+-					n->ofTypename->location = @6;
++					n->ofTypename->location = @6.start;
+ 					n->constraints = NIL;
+ 					n->accessMethod = $9;
+ 					n->options = $10;
+@@ -3686,7 +3706,7 @@
+ 					n->inhRelations = NIL;
+ 					n->partspec = $11;
+ 					n->ofTypename = makeTypeNameFromNameList($9);
+-					n->ofTypename->location = @9;
++					n->ofTypename->location = @9.start;
+ 					n->constraints = NIL;
+ 					n->accessMethod = $12;
+ 					n->options = $13;
+@@ -3758,14 +3778,14 @@
+ 				{
+ 					ereport(WARNING,
+ 							(errmsg("GLOBAL is deprecated in temporary table creation"),
+-							 parser_errposition(@1)));
++							 parser_errposition(@1.start)));
+ 					$$ = RELPERSISTENCE_TEMP;
+ 				}
+ 			| GLOBAL TEMP
+ 				{
+ 					ereport(WARNING,
+ 							(errmsg("GLOBAL is deprecated in temporary table creation"),
+-							 parser_errposition(@1)));
++							 parser_errposition(@1.start)));
+ 					$$ = RELPERSISTENCE_TEMP;
+ 				}
+ 			| UNLOGGED					{ $$ = RELPERSISTENCE_UNLOGGED; }
+@@ -3834,7 +3854,7 @@
+ 					n->fdwoptions = $5;
+ 					SplitColQualList($6, &n->constraints, &n->collClause,
+ 									 yyscanner);
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -3855,7 +3875,7 @@
+ 					n->collOid = InvalidOid;
+ 					SplitColQualList($2, &n->constraints, &n->collClause,
+ 									 yyscanner);
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 				| ColId WITH OPTIONS ColQualList
+@@ -3874,7 +3894,7 @@
+ 					n->collOid = InvalidOid;
+ 					SplitColQualList($4, &n->constraints, &n->collClause,
+ 									 yyscanner);
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -3910,7 +3930,7 @@
+ 					Constraint *n = castNode(Constraint, $3);
+ 
+ 					n->conname = $2;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| ColConstraintElem						{ $$ = $1; }
+@@ -3926,7 +3946,7 @@
+ 
+ 					n->arg = NULL;
+ 					n->collname = $2;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -3952,7 +3972,7 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_NOTNULL;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| NULL_P
+@@ -3960,7 +3980,7 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_NULL;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| UNIQUE opt_unique_null_treatment opt_definition OptConsTableSpace
+@@ -3968,7 +3988,7 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_UNIQUE;
+-					n->location = @1;
++					n->location = @1.start;
+ 					n->nulls_not_distinct = !$2;
+ 					n->keys = NULL;
+ 					n->options = $3;
+@@ -3981,7 +4001,7 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_PRIMARY;
+-					n->location = @1;
++					n->location = @1.start;
+ 					n->keys = NULL;
+ 					n->options = $3;
+ 					n->indexname = NULL;
+@@ -3993,7 +4013,7 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_CHECK;
+-					n->location = @1;
++					n->location = @1.start;
+ 					n->is_no_inherit = $5;
+ 					n->raw_expr = $3;
+ 					n->cooked_expr = NULL;
+@@ -4006,7 +4026,7 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_DEFAULT;
+-					n->location = @1;
++					n->location = @1.start;
+ 					n->raw_expr = $2;
+ 					n->cooked_expr = NULL;
+ 					$$ = (Node *) n;
+@@ -4018,7 +4038,7 @@
+ 					n->contype = CONSTR_IDENTITY;
+ 					n->generated_when = $2;
+ 					n->options = $5;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| GENERATED generated_when AS '(' a_expr ')' STORED
+@@ -4029,7 +4049,7 @@
+ 					n->generated_when = $2;
+ 					n->raw_expr = $5;
+ 					n->cooked_expr = NULL;
+-					n->location = @1;
++					n->location = @1.start;
+ 
+ 					/*
+ 					 * Can't do this in the grammar because of shift/reduce
+@@ -4041,7 +4061,7 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_SYNTAX_ERROR),
+ 								 errmsg("for a generated column, GENERATED ALWAYS must be specified"),
+-								 parser_errposition(@2)));
++								 parser_errposition(@2.start)));
+ 
+ 					$$ = (Node *) n;
+ 				}
+@@ -4050,7 +4070,7 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_FOREIGN;
+-					n->location = @1;
++					n->location = @1.start;
+ 					n->pktable = $2;
+ 					n->fk_attrs = NIL;
+ 					n->pk_attrs = $3;
+@@ -4096,7 +4116,7 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_ATTR_DEFERRABLE;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| NOT DEFERRABLE
+@@ -4104,7 +4124,7 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_ATTR_NOT_DEFERRABLE;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| INITIALLY DEFERRED
+@@ -4112,7 +4132,7 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_ATTR_DEFERRED;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| INITIALLY IMMEDIATE
+@@ -4120,7 +4140,7 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_ATTR_IMMEDIATE;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -4168,7 +4188,7 @@
+ 					Constraint *n = castNode(Constraint, $3);
+ 
+ 					n->conname = $2;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| ConstraintElem						{ $$ = $1; }
+@@ -4180,10 +4200,10 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_CHECK;
+-					n->location = @1;
++					n->location = @1.start;
+ 					n->raw_expr = $3;
+ 					n->cooked_expr = NULL;
+-					processCASbits($5, @5, "CHECK",
++					processCASbits($5, @5.start, "CHECK",
+ 								   NULL, NULL, &n->skip_validation,
+ 								   &n->is_no_inherit, yyscanner);
+ 					n->initially_valid = !n->skip_validation;
+@@ -4195,14 +4215,14 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_UNIQUE;
+-					n->location = @1;
++					n->location = @1.start;
+ 					n->nulls_not_distinct = !$2;
+ 					n->keys = $4;
+ 					n->including = $6;
+ 					n->options = $7;
+ 					n->indexname = NULL;
+ 					n->indexspace = $8;
+-					processCASbits($9, @9, "UNIQUE",
++					processCASbits($9, @9.start, "UNIQUE",
+ 								   &n->deferrable, &n->initdeferred, NULL,
+ 								   NULL, yyscanner);
+ 					$$ = (Node *) n;
+@@ -4212,13 +4232,13 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_UNIQUE;
+-					n->location = @1;
++					n->location = @1.start;
+ 					n->keys = NIL;
+ 					n->including = NIL;
+ 					n->options = NIL;
+ 					n->indexname = $2;
+ 					n->indexspace = NULL;
+-					processCASbits($3, @3, "UNIQUE",
++					processCASbits($3, @3.start, "UNIQUE",
+ 								   &n->deferrable, &n->initdeferred, NULL,
+ 								   NULL, yyscanner);
+ 					$$ = (Node *) n;
+@@ -4229,13 +4249,13 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_PRIMARY;
+-					n->location = @1;
++					n->location = @1.start;
+ 					n->keys = $4;
+ 					n->including = $6;
+ 					n->options = $7;
+ 					n->indexname = NULL;
+ 					n->indexspace = $8;
+-					processCASbits($9, @9, "PRIMARY KEY",
++					processCASbits($9, @9.start, "PRIMARY KEY",
+ 								   &n->deferrable, &n->initdeferred, NULL,
+ 								   NULL, yyscanner);
+ 					$$ = (Node *) n;
+@@ -4245,13 +4265,13 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_PRIMARY;
+-					n->location = @1;
++					n->location = @1.start;
+ 					n->keys = NIL;
+ 					n->including = NIL;
+ 					n->options = NIL;
+ 					n->indexname = $3;
+ 					n->indexspace = NULL;
+-					processCASbits($4, @4, "PRIMARY KEY",
++					processCASbits($4, @4.start, "PRIMARY KEY",
+ 								   &n->deferrable, &n->initdeferred, NULL,
+ 								   NULL, yyscanner);
+ 					$$ = (Node *) n;
+@@ -4263,7 +4283,7 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_EXCLUSION;
+-					n->location = @1;
++					n->location = @1.start;
+ 					n->access_method = $2;
+ 					n->exclusions = $4;
+ 					n->including = $6;
+@@ -4271,7 +4291,7 @@
+ 					n->indexname = NULL;
+ 					n->indexspace = $8;
+ 					n->where_clause = $9;
+-					processCASbits($10, @10, "EXCLUDE",
++					processCASbits($10, @10.start, "EXCLUDE",
+ 								   &n->deferrable, &n->initdeferred, NULL,
+ 								   NULL, yyscanner);
+ 					$$ = (Node *) n;
+@@ -4282,7 +4302,7 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_FOREIGN;
+-					n->location = @1;
++					n->location = @1.start;
+ 					n->pktable = $7;
+ 					n->fk_attrs = $4;
+ 					n->pk_attrs = $8;
+@@ -4290,7 +4310,7 @@
+ 					n->fk_upd_action = ($10)->updateAction->action;
+ 					n->fk_del_action = ($10)->deleteAction->action;
+ 					n->fk_del_set_cols = ($10)->deleteAction->cols;
+-					processCASbits($11, @11, "FOREIGN KEY",
++					processCASbits($11, @11.start, "FOREIGN KEY",
+ 								   &n->deferrable, &n->initdeferred,
+ 								   &n->skip_validation, NULL,
+ 								   yyscanner);
+@@ -4316,7 +4336,7 @@
+ 					Constraint *n = castNode(Constraint, $3);
+ 
+ 					n->conname = $2;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| DomainConstraintElem					{ $$ = $1; }
+@@ -4328,10 +4348,10 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_CHECK;
+-					n->location = @1;
++					n->location = @1.start;
+ 					n->raw_expr = $3;
+ 					n->cooked_expr = NULL;
+-					processCASbits($5, @5, "CHECK",
++					processCASbits($5, @5.start, "CHECK",
+ 								   NULL, NULL, &n->skip_validation,
+ 								   &n->is_no_inherit, yyscanner);
+ 					n->initially_valid = !n->skip_validation;
+@@ -4342,10 +4362,10 @@
+ 					Constraint *n = makeNode(Constraint);
+ 
+ 					n->contype = CONSTR_NOTNULL;
+-					n->location = @1;
++					n->location = @1.start;
+ 					n->keys = list_make1(makeString("value"));
+ 					/* no NOT VALID support yet */
+-					processCASbits($3, @3, "NOT NULL",
++					processCASbits($3, @3.start, "NOT NULL",
+ 								   NULL, NULL, NULL,
+ 								   &n->is_no_inherit, yyscanner);
+ 					n->initially_valid = true;
+@@ -4386,7 +4406,7 @@
+ 				ereport(ERROR,
+ 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 						 errmsg("MATCH PARTIAL not yet implemented"),
+-						 parser_errposition(@1)));
++						 parser_errposition(@1.start)));
+ 				$$ = FKCONSTR_MATCH_PARTIAL;
+ 			}
+ 		| MATCH SIMPLE
+@@ -4479,7 +4499,7 @@
+ 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 								 errmsg("a column list with %s is only supported for ON DELETE actions",
+ 										($3)->action == FKCONSTR_ACTION_SETNULL ? "SET NULL" : "SET DEFAULT"),
+-								 parser_errposition(@1)));
++								 parser_errposition(@1.start)));
+ 					$$ = $3;
+ 				}
+ 		;
+@@ -4548,7 +4568,7 @@
+ 
+ 					n->strategy = parsePartitionStrategy($3);
+ 					n->partParams = $5;
+-					n->location = @1;
++					n->location = @1.start;
+ 
+ 					$$ = n;
+ 				}
+@@ -4566,7 +4586,7 @@
+ 					n->expr = NULL;
+ 					n->collation = $2;
+ 					n->opclass = $3;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = n;
+ 				}
+ 			| func_expr_windowless opt_collate opt_qualified_name
+@@ -4577,7 +4597,7 @@
+ 					n->expr = $1;
+ 					n->collation = $2;
+ 					n->opclass = $3;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = n;
+ 				}
+ 			| '(' a_expr ')' opt_collate opt_qualified_name
+@@ -4588,7 +4608,7 @@
+ 					n->expr = $2;
+ 					n->collation = $4;
+ 					n->opclass = $5;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = n;
+ 				}
+ 		;
+@@ -4938,67 +4958,67 @@
+ 
+ SeqOptElem: AS SimpleTypename
+ 				{
+-					$$ = makeDefElem("as", (Node *) $2, @1);
++					$$ = makeDefElem("as", (Node *) $2, @1.start);
+ 				}
+ 			| CACHE NumericOnly
+ 				{
+-					$$ = makeDefElem("cache", (Node *) $2, @1);
++					$$ = makeDefElem("cache", (Node *) $2, @1.start);
+ 				}
+ 			| CYCLE
+ 				{
+-					$$ = makeDefElem("cycle", (Node *) makeBoolean(true), @1);
++					$$ = makeDefElem("cycle", (Node *) makeBoolean(true), @1.start);
+ 				}
+ 			| NO CYCLE
+ 				{
+-					$$ = makeDefElem("cycle", (Node *) makeBoolean(false), @1);
++					$$ = makeDefElem("cycle", (Node *) makeBoolean(false), @1.start);
+ 				}
+ 			| INCREMENT opt_by NumericOnly
+ 				{
+-					$$ = makeDefElem("increment", (Node *) $3, @1);
++					$$ = makeDefElem("increment", (Node *) $3, @1.start);
+ 				}
+ 			| LOGGED
+ 				{
+-					$$ = makeDefElem("logged", NULL, @1);
++					$$ = makeDefElem("logged", NULL, @1.start);
+ 				}
+ 			| MAXVALUE NumericOnly
+ 				{
+-					$$ = makeDefElem("maxvalue", (Node *) $2, @1);
++					$$ = makeDefElem("maxvalue", (Node *) $2, @1.start);
+ 				}
+ 			| MINVALUE NumericOnly
+ 				{
+-					$$ = makeDefElem("minvalue", (Node *) $2, @1);
++					$$ = makeDefElem("minvalue", (Node *) $2, @1.start);
+ 				}
+ 			| NO MAXVALUE
+ 				{
+-					$$ = makeDefElem("maxvalue", NULL, @1);
++					$$ = makeDefElem("maxvalue", NULL, @1.start);
+ 				}
+ 			| NO MINVALUE
+ 				{
+-					$$ = makeDefElem("minvalue", NULL, @1);
++					$$ = makeDefElem("minvalue", NULL, @1.start);
+ 				}
+ 			| OWNED BY any_name
+ 				{
+-					$$ = makeDefElem("owned_by", (Node *) $3, @1);
++					$$ = makeDefElem("owned_by", (Node *) $3, @1.start);
+ 				}
+ 			| SEQUENCE NAME_P any_name
+ 				{
+-					$$ = makeDefElem("sequence_name", (Node *) $3, @1);
++					$$ = makeDefElem("sequence_name", (Node *) $3, @1.start);
+ 				}
+ 			| START opt_with NumericOnly
+ 				{
+-					$$ = makeDefElem("start", (Node *) $3, @1);
++					$$ = makeDefElem("start", (Node *) $3, @1.start);
+ 				}
+ 			| RESTART
+ 				{
+-					$$ = makeDefElem("restart", NULL, @1);
++					$$ = makeDefElem("restart", NULL, @1.start);
+ 				}
+ 			| RESTART opt_with NumericOnly
+ 				{
+-					$$ = makeDefElem("restart", (Node *) $3, @1);
++					$$ = makeDefElem("restart", (Node *) $3, @1.start);
+ 				}
+ 			| UNLOGGED
+ 				{
+-					$$ = makeDefElem("unlogged", NULL, @1);
++					$$ = makeDefElem("unlogged", NULL, @1.start);
+ 				}
+ 		;
+ 
+@@ -5186,22 +5206,22 @@
+ create_extension_opt_item:
+ 			SCHEMA name
+ 				{
+-					$$ = makeDefElem("schema", (Node *) makeString($2), @1);
++					$$ = makeDefElem("schema", (Node *) makeString($2), @1.start);
+ 				}
+ 			| VERSION_P NonReservedWord_or_Sconst
+ 				{
+-					$$ = makeDefElem("new_version", (Node *) makeString($2), @1);
++					$$ = makeDefElem("new_version", (Node *) makeString($2), @1.start);
+ 				}
+ 			| FROM NonReservedWord_or_Sconst
+ 				{
+ 					ereport(ERROR,
+ 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 							 errmsg("CREATE EXTENSION ... FROM is no longer supported"),
+-							 parser_errposition(@1)));
++							 parser_errposition(@1.start)));
+ 				}
+ 			| CASCADE
+ 				{
+-					$$ = makeDefElem("cascade", (Node *) makeBoolean(true), @1);
++					$$ = makeDefElem("cascade", (Node *) makeBoolean(true), @1.start);
+ 				}
+ 		;
+ 
+@@ -5231,7 +5251,7 @@
+ alter_extension_opt_item:
+ 			TO NonReservedWord_or_Sconst
+ 				{
+-					$$ = makeDefElem("new_version", (Node *) makeString($2), @1);
++					$$ = makeDefElem("new_version", (Node *) makeString($2), @1.start);
+ 				}
+ 		;
+ 
+@@ -5393,10 +5413,10 @@
+ 		;
+ 
+ fdw_option:
+-			HANDLER handler_name				{ $$ = makeDefElem("handler", (Node *) $2, @1); }
+-			| NO HANDLER						{ $$ = makeDefElem("handler", NULL, @1); }
+-			| VALIDATOR handler_name			{ $$ = makeDefElem("validator", (Node *) $2, @1); }
+-			| NO VALIDATOR						{ $$ = makeDefElem("validator", NULL, @1); }
++			HANDLER handler_name				{ $$ = makeDefElem("handler", (Node *) $2, @1.start); }
++			| NO HANDLER						{ $$ = makeDefElem("handler", NULL, @1.start); }
++			| VALIDATOR handler_name			{ $$ = makeDefElem("validator", (Node *) $2, @1.start); }
++			| NO VALIDATOR						{ $$ = makeDefElem("validator", NULL, @1.start); }
+ 		;
+ 
+ fdw_options:
+@@ -5486,14 +5506,14 @@
+ 				}
+ 			| DROP generic_option_name
+ 				{
+-					$$ = makeDefElemExtended(NULL, $2, NULL, DEFELEM_DROP, @2);
++					$$ = makeDefElemExtended(NULL, $2, NULL, DEFELEM_DROP, @2.start);
+ 				}
+ 		;
+ 
+ generic_option_elem:
+ 			generic_option_name generic_option_arg
+ 				{
+-					$$ = makeDefElem($1, $2, @1);
++					$$ = makeDefElem($1, $2, @1.start);
+ 				}
+ 		;
+ 
+@@ -5768,7 +5788,7 @@
+ 
+ /* User mapping authorization identifier */
+ auth_ident: RoleSpec			{ $$ = $1; }
+-			| USER				{ $$ = makeRoleSpec(ROLESPEC_CURRENT_USER, @1); }
++			| USER				{ $$ = makeRoleSpec(ROLESPEC_CURRENT_USER, @1.start); }
+ 		;
+ 
+ /*****************************************************************************
+@@ -5896,7 +5916,7 @@
+ 								(errcode(ERRCODE_SYNTAX_ERROR),
+ 								 errmsg("unrecognized row security option \"%s\"", $2),
+ 								 errhint("Only PERMISSIVE or RESTRICTIVE policies are supported currently."),
+-								 parser_errposition(@2)));
++								 parser_errposition(@2.start)));
+ 
+ 				}
+ 			| /* EMPTY */			{ $$ = true; }
+@@ -5992,7 +6012,7 @@
+ 					n->columns = (List *) lsecond($7);
+ 					n->whenClause = $15;
+ 					n->transitionRels = NIL;
+-					processCASbits($11, @11, "TRIGGER",
++					processCASbits($11, @11.start, "TRIGGER",
+ 								   &n->deferrable, &n->initdeferred, NULL,
+ 								   NULL, yyscanner);
+ 					n->constrrel = $10;
+@@ -6160,14 +6180,14 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_SYNTAX_ERROR),
+ 								 errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"),
+-								 parser_errposition(@2)));
++								 parser_errposition(@2.start)));
+ 					/* generic message for other conflicts */
+ 					if ((newspec & (CAS_NOT_DEFERRABLE | CAS_DEFERRABLE)) == (CAS_NOT_DEFERRABLE | CAS_DEFERRABLE) ||
+ 						(newspec & (CAS_INITIALLY_IMMEDIATE | CAS_INITIALLY_DEFERRED)) == (CAS_INITIALLY_IMMEDIATE | CAS_INITIALLY_DEFERRED))
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_SYNTAX_ERROR),
+ 								 errmsg("conflicting constraint properties"),
+-								 parser_errposition(@2)));
++								 parser_errposition(@2.start)));
+ 					$$ = newspec;
+ 				}
+ 		;
+@@ -6225,7 +6245,7 @@
+ 
+ event_trigger_when_item:
+ 		ColId IN_P '(' event_trigger_value_list ')'
+-			{ $$ = makeDefElem($1, (Node *) $4, @1); }
++			{ $$ = makeDefElem($1, (Node *) $4, @1.start); }
+ 		;
+ 
+ event_trigger_value_list:
+@@ -6344,7 +6364,7 @@
+ 					CompositeTypeStmt *n = makeNode(CompositeTypeStmt);
+ 
+ 					/* can't use qualified_name, sigh */
+-					n->typevar = makeRangeVarFromAnyName($3, @3, yyscanner);
++					n->typevar = rvExtent(makeRangeVarFromAnyName($3, @3.start, yyscanner), @$);
+ 					n->coldeflist = $6;
+ 					$$ = (Node *) n;
+ 				}
+@@ -6432,7 +6452,7 @@
+ 					n->kind = OBJECT_COLLATION;
+ 					n->args = NIL;
+ 					n->defnames = $3;
+-					n->definition = list_make1(makeDefElem("from", (Node *) $5, @5));
++					n->definition = list_make1(makeDefElem("from", (Node *) $5, @5.start));
+ 					$$ = (Node *) n;
+ 				}
+ 			| CREATE COLLATION IF_P NOT EXISTS any_name FROM any_name
+@@ -6442,7 +6462,7 @@
+ 					n->kind = OBJECT_COLLATION;
+ 					n->args = NIL;
+ 					n->defnames = $6;
+-					n->definition = list_make1(makeDefElem("from", (Node *) $8, @8));
++					n->definition = list_make1(makeDefElem("from", (Node *) $8, @8.start));
+ 					n->if_not_exists = true;
+ 					$$ = (Node *) n;
+ 				}
+@@ -6457,11 +6477,11 @@
+ 
+ def_elem:	ColLabel '=' def_arg
+ 				{
+-					$$ = makeDefElem($1, (Node *) $3, @1);
++					$$ = makeDefElem($1, (Node *) $3, @1.start);
+ 				}
+ 			| ColLabel
+ 				{
+-					$$ = makeDefElem($1, NULL, @1);
++					$$ = makeDefElem($1, NULL, @1.start);
+ 				}
+ 		;
+ 
+@@ -6488,7 +6508,7 @@
+  */
+ old_aggr_elem:  IDENT '=' def_arg
+ 				{
+-					$$ = makeDefElem($1, (Node *) $3, @1);
++					$$ = makeDefElem($1, (Node *) $3, @1.start);
+ 				}
+ 		;
+ 
+@@ -6583,7 +6603,7 @@
+ 				ereport(ERROR,
+ 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 						 errmsg("dropping an enum value is not implemented"),
+-						 parser_errposition(@4)));
++						 parser_errposition(@4.start)));
+ 			}
+ 		 ;
+ 
+@@ -6702,7 +6722,7 @@
+ 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 							 errmsg("RECHECK is no longer required"),
+ 							 errhint("Update your data type."),
+-							 parser_errposition(@1)));
++							 parser_errposition(@1.start)));
+ 					$$ = true;
+ 				}
+ 			| /*EMPTY*/						{ $$ = false; }
+@@ -7999,7 +8019,7 @@
+ 					DefElem *opt;
+ 
+ 					opt = makeDefElem(pstrdup($2),
+-									  (Node *) makeBoolean(false), @2);
++									  (Node *) makeBoolean(false), @2.start);
+ 					n->is_grant = false;
+ 					n->opt = list_make1(opt);
+ 					n->granted_roles = $5;
+@@ -8018,7 +8038,7 @@
+ grant_role_opt:
+ 		ColLabel grant_role_opt_value
+ 			{
+-				$$ = makeDefElem(pstrdup($1), $2, @1);
++				$$ = makeDefElem(pstrdup($1), $2, @1.start);
+ 			}
+ 		;
+ 
+@@ -8057,15 +8077,15 @@
+ DefACLOption:
+ 			IN_P SCHEMA name_list
+ 				{
+-					$$ = makeDefElem("schemas", (Node *) $3, @1);
++					$$ = makeDefElem("schemas", (Node *) $3, @1.start);
+ 				}
+ 			| FOR ROLE role_list
+ 				{
+-					$$ = makeDefElem("roles", (Node *) $3, @1);
++					$$ = makeDefElem("roles", (Node *) $3, @1.start);
+ 				}
+ 			| FOR USER role_list
+ 				{
+-					$$ = makeDefElem("roles", (Node *) $3, @1);
++					$$ = makeDefElem("roles", (Node *) $3, @1.start);
+ 				}
+ 		;
+ 
+@@ -8328,7 +8348,7 @@
+ 					n->funcname = $4;
+ 					n->parameters = mergeTableFuncParameters($5, $9);
+ 					n->returnType = TableFuncTypeName($9);
+-					n->returnType->location = @7;
++					n->returnType->location = @7.start;
+ 					n->options = $11;
+ 					n->sql_body = $12;
+ 					$$ = (Node *) n;
+@@ -8538,14 +8558,14 @@
+ 				{
+ 					$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
+ 					$$->pct_type = true;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| SETOF type_function_name attrs '%' TYPE_P
+ 				{
+ 					$$ = makeTypeNameFromNameList(lcons(makeString($2), $3));
+ 					$$->pct_type = true;
+ 					$$->setof = true;
+-					$$->location = @2;
++					$$->location = @2.start;
+ 				}
+ 		;
+ 
+@@ -8575,7 +8595,7 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 								 errmsg("aggregates cannot have output arguments"),
+-								 parser_errposition(@1)));
++								 parser_errposition(@1.start)));
+ 					$$ = $1;
+ 				}
+ 		;
+@@ -8668,91 +8688,91 @@
+ common_func_opt_item:
+ 			CALLED ON NULL_P INPUT_P
+ 				{
+-					$$ = makeDefElem("strict", (Node *) makeBoolean(false), @1);
++					$$ = makeDefElem("strict", (Node *) makeBoolean(false), @1.start);
+ 				}
+ 			| RETURNS NULL_P ON NULL_P INPUT_P
+ 				{
+-					$$ = makeDefElem("strict", (Node *) makeBoolean(true), @1);
++					$$ = makeDefElem("strict", (Node *) makeBoolean(true), @1.start);
+ 				}
+ 			| STRICT_P
+ 				{
+-					$$ = makeDefElem("strict", (Node *) makeBoolean(true), @1);
++					$$ = makeDefElem("strict", (Node *) makeBoolean(true), @1.start);
+ 				}
+ 			| IMMUTABLE
+ 				{
+-					$$ = makeDefElem("volatility", (Node *) makeString("immutable"), @1);
++					$$ = makeDefElem("volatility", (Node *) makeString("immutable"), @1.start);
+ 				}
+ 			| STABLE
+ 				{
+-					$$ = makeDefElem("volatility", (Node *) makeString("stable"), @1);
++					$$ = makeDefElem("volatility", (Node *) makeString("stable"), @1.start);
+ 				}
+ 			| VOLATILE
+ 				{
+-					$$ = makeDefElem("volatility", (Node *) makeString("volatile"), @1);
++					$$ = makeDefElem("volatility", (Node *) makeString("volatile"), @1.start);
+ 				}
+ 			| EXTERNAL SECURITY DEFINER
+ 				{
+-					$$ = makeDefElem("security", (Node *) makeBoolean(true), @1);
++					$$ = makeDefElem("security", (Node *) makeBoolean(true), @1.start);
+ 				}
+ 			| EXTERNAL SECURITY INVOKER
+ 				{
+-					$$ = makeDefElem("security", (Node *) makeBoolean(false), @1);
++					$$ = makeDefElem("security", (Node *) makeBoolean(false), @1.start);
+ 				}
+ 			| SECURITY DEFINER
+ 				{
+-					$$ = makeDefElem("security", (Node *) makeBoolean(true), @1);
++					$$ = makeDefElem("security", (Node *) makeBoolean(true), @1.start);
+ 				}
+ 			| SECURITY INVOKER
+ 				{
+-					$$ = makeDefElem("security", (Node *) makeBoolean(false), @1);
++					$$ = makeDefElem("security", (Node *) makeBoolean(false), @1.start);
+ 				}
+ 			| LEAKPROOF
+ 				{
+-					$$ = makeDefElem("leakproof", (Node *) makeBoolean(true), @1);
++					$$ = makeDefElem("leakproof", (Node *) makeBoolean(true), @1.start);
+ 				}
+ 			| NOT LEAKPROOF
+ 				{
+-					$$ = makeDefElem("leakproof", (Node *) makeBoolean(false), @1);
++					$$ = makeDefElem("leakproof", (Node *) makeBoolean(false), @1.start);
+ 				}
+ 			| COST NumericOnly
+ 				{
+-					$$ = makeDefElem("cost", (Node *) $2, @1);
++					$$ = makeDefElem("cost", (Node *) $2, @1.start);
+ 				}
+ 			| ROWS NumericOnly
+ 				{
+-					$$ = makeDefElem("rows", (Node *) $2, @1);
++					$$ = makeDefElem("rows", (Node *) $2, @1.start);
+ 				}
+ 			| SUPPORT any_name
+ 				{
+-					$$ = makeDefElem("support", (Node *) $2, @1);
++					$$ = makeDefElem("support", (Node *) $2, @1.start);
+ 				}
+ 			| FunctionSetResetClause
+ 				{
+ 					/* we abuse the normal content of a DefElem here */
+-					$$ = makeDefElem("set", (Node *) $1, @1);
++					$$ = makeDefElem("set", (Node *) $1, @1.start);
+ 				}
+ 			| PARALLEL ColId
+ 				{
+-					$$ = makeDefElem("parallel", (Node *) makeString($2), @1);
++					$$ = makeDefElem("parallel", (Node *) makeString($2), @1.start);
+ 				}
+ 		;
+ 
+ createfunc_opt_item:
+ 			AS func_as
+ 				{
+-					$$ = makeDefElem("as", (Node *) $2, @1);
++					$$ = makeDefElem("as", (Node *) $2, @1.start);
+ 				}
+ 			| LANGUAGE NonReservedWord_or_Sconst
+ 				{
+-					$$ = makeDefElem("language", (Node *) makeString($2), @1);
++					$$ = makeDefElem("language", (Node *) makeString($2), @1.start);
+ 				}
+ 			| TRANSFORM transform_type_list
+ 				{
+-					$$ = makeDefElem("transform", (Node *) $2, @1);
++					$$ = makeDefElem("transform", (Node *) $2, @1.start);
+ 				}
+ 			| WINDOW
+ 				{
+-					$$ = makeDefElem("window", (Node *) makeBoolean(true), @1);
++					$$ = makeDefElem("window", (Node *) makeBoolean(true), @1.start);
+ 				}
+ 			| common_func_opt_item
+ 				{
+@@ -9039,7 +9059,7 @@
+ 						   (errcode(ERRCODE_SYNTAX_ERROR),
+ 							errmsg("missing argument"),
+ 							errhint("Use NONE to denote the missing argument of a unary operator."),
+-							parser_errposition(@3)));
++							parser_errposition(@3.start)));
+ 				}
+ 			| '(' Typename ',' Typename ')'
+ 					{ $$ = list_make2($2, $4); }
+@@ -9099,11 +9119,11 @@
+ dostmt_opt_item:
+ 			Sconst
+ 				{
+-					$$ = makeDefElem("as", (Node *) makeString($1), @1);
++					$$ = makeDefElem("as", (Node *) makeString($1), @1.start);
+ 				}
+ 			| LANGUAGE NonReservedWord_or_Sconst
+ 				{
+-					$$ = makeDefElem("language", (Node *) makeString($2), @1);
++					$$ = makeDefElem("language", (Node *) makeString($2), @1.start);
+ 				}
+ 		;
+ 
+@@ -9245,7 +9265,7 @@
+ 					n->params = $2;
+ 					if ($4)
+ 						n->params = lappend(n->params,
+-											makeDefElem("concurrently", NULL, @4));
++											makeDefElem("concurrently", NULL, @4.start));
+ 					$$ = (Node *) n;
+ 				}
+ 			| REINDEX opt_reindex_option_list SCHEMA opt_concurrently name
+@@ -9258,7 +9278,7 @@
+ 					n->params = $2;
+ 					if ($4)
+ 						n->params = lappend(n->params,
+-											makeDefElem("concurrently", NULL, @4));
++											makeDefElem("concurrently", NULL, @4.start));
+ 					$$ = (Node *) n;
+ 				}
+ 			| REINDEX opt_reindex_option_list reindex_target_all opt_concurrently opt_single_name
+@@ -9271,7 +9291,7 @@
+ 					n->params = $2;
+ 					if ($4)
+ 						n->params = lappend(n->params,
+-											makeDefElem("concurrently", NULL, @4));
++											makeDefElem("concurrently", NULL, @4.start));
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -9902,7 +9922,7 @@
+ 
+ 					n->renameType = OBJECT_ATTRIBUTE;
+ 					n->relationType = OBJECT_TYPE;
+-					n->relation = makeRangeVarFromAnyName($3, @3, yyscanner);
++					n->relation = rvExtent(makeRangeVarFromAnyName($3, @3.start, yyscanner), @$);
+ 					n->subname = $6;
+ 					n->newname = $8;
+ 					n->behavior = $9;
+@@ -10294,11 +10314,11 @@
+ 		;
+ 
+ operator_def_elem: ColLabel '=' NONE
+-						{ $$ = makeDefElem($1, NULL, @1); }
+-				   | ColLabel '=' operator_def_arg
+-						{ $$ = makeDefElem($1, (Node *) $3, @1); }
++						{ $$ = makeDefElem($1, NULL, @1.start); }
++				   | ColLabel '=' operator_def_arg
++						{ $$ = makeDefElem($1, (Node *) $3, @1.start); }
+ 				   | ColLabel
+-						{ $$ = makeDefElem($1, NULL, @1); }
++						{ $$ = makeDefElem($1, NULL, @1.start); }
+ 		;
+ 
+ /* must be similar enough to def_arg to avoid reduce/reduce conflicts */
+@@ -10627,13 +10647,13 @@
+ 					$$ = makeNode(PublicationObjSpec);
+ 					$$->pubobjtype = PUBLICATIONOBJ_TABLES_IN_SCHEMA;
+ 					$$->name = $4;
+-					$$->location = @4;
++					$$->location = @4.start;
+ 				}
+ 			| TABLES IN_P SCHEMA CURRENT_SCHEMA
+ 				{
+ 					$$ = makeNode(PublicationObjSpec);
+ 					$$->pubobjtype = PUBLICATIONOBJ_TABLES_IN_CUR_SCHEMA;
+-					$$->location = @4;
++					$$->location = @4.start;
+ 				}
+ 			| ColId opt_column_list OptWhereClause
+ 				{
+@@ -10652,7 +10672,7 @@
+ 						 * preprocess_pubobj_list().
+ 						 */
+ 						$$->pubtable = makeNode(PublicationTable);
+-						$$->pubtable->relation = makeRangeVar(NULL, $1, @1);
++						$$->pubtable->relation = rvExtent(makeRangeVar(NULL, $1, @1.start), @$);
+ 						$$->pubtable->columns = $2;
+ 						$$->pubtable->whereClause = $3;
+ 					}
+@@ -10660,17 +10680,17 @@
+ 					{
+ 						$$->name = $1;
+ 					}
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| ColId indirection opt_column_list OptWhereClause
+ 				{
+ 					$$ = makeNode(PublicationObjSpec);
+ 					$$->pubobjtype = PUBLICATIONOBJ_CONTINUATION;
+ 					$$->pubtable = makeNode(PublicationTable);
+-					$$->pubtable->relation = makeRangeVarFromQualifiedName($1, $2, @1, yyscanner);
++					$$->pubtable->relation = rvExtent(makeRangeVarFromQualifiedName($1, $2, @1.start, yyscanner), @$);
+ 					$$->pubtable->columns = $3;
+ 					$$->pubtable->whereClause = $4;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			/* grammar like tablename * , ONLY tablename, ONLY ( tablename ) */
+ 			| extended_relation_expr opt_column_list OptWhereClause
+@@ -10686,7 +10706,7 @@
+ 				{
+ 					$$ = makeNode(PublicationObjSpec);
+ 					$$->pubobjtype = PUBLICATIONOBJ_CONTINUATION;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 				;
+ 
+@@ -10851,7 +10871,7 @@
+ 					n->kind = ALTER_SUBSCRIPTION_ENABLED;
+ 					n->subname = $3;
+ 					n->options = list_make1(makeDefElem("enabled",
+-											(Node *) makeBoolean(true), @1));
++											(Node *) makeBoolean(true), @1.start));
+ 					$$ = (Node *) n;
+ 				}
+ 			| ALTER SUBSCRIPTION name DISABLE_P
+@@ -10862,7 +10882,7 @@
+ 					n->kind = ALTER_SUBSCRIPTION_ENABLED;
+ 					n->subname = $3;
+ 					n->options = list_make1(makeDefElem("enabled",
+-											(Node *) makeBoolean(false), @1));
++											(Node *) makeBoolean(false), @1.start));
+ 					$$ = (Node *) n;
+ 				}
+ 			| ALTER SUBSCRIPTION name SKIP definition
+@@ -11079,7 +11099,7 @@
+ 
+ 					n->kind = TRANS_STMT_SAVEPOINT;
+ 					n->savepoint_name = $2;
+-					n->location = @2;
++					n->location = @2.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| RELEASE SAVEPOINT ColId
+@@ -11088,7 +11108,7 @@
+ 
+ 					n->kind = TRANS_STMT_RELEASE;
+ 					n->savepoint_name = $3;
+-					n->location = @3;
++					n->location = @3.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| RELEASE ColId
+@@ -11097,7 +11117,7 @@
+ 
+ 					n->kind = TRANS_STMT_RELEASE;
+ 					n->savepoint_name = $2;
+-					n->location = @2;
++					n->location = @2.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| ROLLBACK opt_transaction TO SAVEPOINT ColId
+@@ -11106,7 +11126,7 @@
+ 
+ 					n->kind = TRANS_STMT_ROLLBACK_TO;
+ 					n->savepoint_name = $5;
+-					n->location = @5;
++					n->location = @5.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| ROLLBACK opt_transaction TO ColId
+@@ -11115,7 +11135,7 @@
+ 
+ 					n->kind = TRANS_STMT_ROLLBACK_TO;
+ 					n->savepoint_name = $4;
+-					n->location = @4;
++					n->location = @4.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| PREPARE TRANSACTION Sconst
+@@ -11124,7 +11144,7 @@
+ 
+ 					n->kind = TRANS_STMT_PREPARE;
+ 					n->gid = $3;
+-					n->location = @3;
++					n->location = @3.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| COMMIT PREPARED Sconst
+@@ -11133,7 +11153,7 @@
+ 
+ 					n->kind = TRANS_STMT_COMMIT_PREPARED;
+ 					n->gid = $3;
+-					n->location = @3;
++					n->location = @3.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| ROLLBACK PREPARED Sconst
+@@ -11142,7 +11162,7 @@
+ 
+ 					n->kind = TRANS_STMT_ROLLBACK_PREPARED;
+ 					n->gid = $3;
+-					n->location = @3;
++					n->location = @3.start;
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -11177,19 +11197,19 @@
+ transaction_mode_item:
+ 			ISOLATION LEVEL iso_level
+ 					{ $$ = makeDefElem("transaction_isolation",
+-									   makeStringConst($3, @3), @1); }
++									   makeStringConst($3, @3.start), @1.start); }
+ 			| READ ONLY
+ 					{ $$ = makeDefElem("transaction_read_only",
+-									   makeIntConst(true, @1), @1); }
++									   makeIntConst(true, @1.start), @1.start); }
+ 			| READ WRITE
+ 					{ $$ = makeDefElem("transaction_read_only",
+-									   makeIntConst(false, @1), @1); }
++									   makeIntConst(false, @1.start), @1.start); }
+ 			| DEFERRABLE
+ 					{ $$ = makeDefElem("transaction_deferrable",
+-									   makeIntConst(true, @1), @1); }
++									   makeIntConst(true, @1.start), @1.start); }
+ 			| NOT DEFERRABLE
+ 					{ $$ = makeDefElem("transaction_deferrable",
+-									   makeIntConst(false, @1), @1); }
++									   makeIntConst(false, @1.start), @1.start); }
+ 		;
+ 
+ /* Syntax with commas is SQL-spec, without commas is Postgres historical */
+@@ -11267,7 +11287,7 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 								 errmsg("WITH CHECK OPTION not supported on recursive views"),
+-								 parser_errposition(@12)));
++								 parser_errposition(@12.start)));
+ 					$$ = (Node *) n;
+ 				}
+ 		| CREATE OR REPLACE OptTemp RECURSIVE VIEW qualified_name '(' columnList ')' opt_reloptions
+@@ -11286,7 +11306,7 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 								 errmsg("WITH CHECK OPTION not supported on recursive views"),
+-								 parser_errposition(@14)));
++								 parser_errposition(@14.start)));
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -11345,15 +11365,15 @@
+ createdb_opt_item:
+ 			createdb_opt_name opt_equal NumericOnly
+ 				{
+-					$$ = makeDefElem($1, $3, @1);
++					$$ = makeDefElem($1, $3, @1.start);
+ 				}
+ 			| createdb_opt_name opt_equal opt_boolean_or_string
+ 				{
+-					$$ = makeDefElem($1, (Node *) makeString($3), @1);
++					$$ = makeDefElem($1, (Node *) makeString($3), @1.start);
+ 				}
+ 			| createdb_opt_name opt_equal DEFAULT
+ 				{
+-					$$ = makeDefElem($1, NULL, @1);
++					$$ = makeDefElem($1, NULL, @1.start);
+ 				}
+ 		;
+ 
+@@ -11416,7 +11436,7 @@
+ 
+ 					n->dbname = $3;
+ 					n->options = list_make1(makeDefElem("tablespace",
+-														(Node *) makeString($6), @6));
++														(Node *) makeString($6), @6.start));
+ 					$$ = (Node *) n;
+ 				 }
+ 			| ALTER DATABASE name REFRESH COLLATION VERSION_P
+@@ -11503,7 +11523,7 @@
+ drop_option:
+ 			FORCE
+ 				{
+-					$$ = makeDefElem("force", NULL, @1);
++					$$ = makeDefElem("force", NULL, @1.start);
+ 				}
+ 		;
+ 
+@@ -11802,7 +11822,7 @@
+ 					n->indexname = $4;
+ 					n->params = NIL;
+ 					if ($2)
+-						n->params = lappend(n->params, makeDefElem("verbose", NULL, @2));
++						n->params = lappend(n->params, makeDefElem("verbose", NULL, @2.start));
+ 					$$ = (Node *) n;
+ 				}
+ 			/* unparenthesized VERBOSE kept for pre-17 compatibility */
+@@ -11814,7 +11834,7 @@
+ 					n->indexname = NULL;
+ 					n->params = NIL;
+ 					if ($2)
+-						n->params = lappend(n->params, makeDefElem("verbose", NULL, @2));
++						n->params = lappend(n->params, makeDefElem("verbose", NULL, @2.start));
+ 					$$ = (Node *) n;
+ 				}
+ 			/* kept for pre-8.3 compatibility */
+@@ -11826,7 +11846,7 @@
+ 					n->indexname = $3;
+ 					n->params = NIL;
+ 					if ($2)
+-						n->params = lappend(n->params, makeDefElem("verbose", NULL, @2));
++						n->params = lappend(n->params, makeDefElem("verbose", NULL, @2.start));
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -11852,16 +11872,16 @@
+ 					n->options = NIL;
+ 					if ($2)
+ 						n->options = lappend(n->options,
+-											 makeDefElem("full", NULL, @2));
++											 makeDefElem("full", NULL, @2.start));
+ 					if ($3)
+ 						n->options = lappend(n->options,
+-											 makeDefElem("freeze", NULL, @3));
++											 makeDefElem("freeze", NULL, @3.start));
+ 					if ($4)
+ 						n->options = lappend(n->options,
+-											 makeDefElem("verbose", NULL, @4));
++											 makeDefElem("verbose", NULL, @4.start));
+ 					if ($5)
+ 						n->options = lappend(n->options,
+-											 makeDefElem("analyze", NULL, @5));
++											 makeDefElem("analyze", NULL, @5.start));
+ 					n->rels = $6;
+ 					n->is_vacuumcmd = true;
+ 					$$ = (Node *) n;
+@@ -11884,7 +11904,7 @@
+ 					n->options = NIL;
+ 					if ($2)
+ 						n->options = lappend(n->options,
+-											 makeDefElem("verbose", NULL, @2));
++											 makeDefElem("verbose", NULL, @2.start));
+ 					n->rels = $3;
+ 					n->is_vacuumcmd = false;
+ 					$$ = (Node *) n;
+@@ -11919,7 +11939,7 @@
+ utility_option_elem:
+ 			utility_option_name utility_option_arg
+ 				{
+-					$$ = makeDefElem($1, $2, @1);
++					$$ = makeDefElem($1, $2, @1.start);
+ 				}
+ 		;
+ 
+@@ -12000,10 +12020,10 @@
+ 					ExplainStmt *n = makeNode(ExplainStmt);
+ 
+ 					n->query = $4;
+-					n->options = list_make1(makeDefElem("analyze", NULL, @2));
++					n->options = list_make1(makeDefElem("analyze", NULL, @2.start));
+ 					if ($3)
+ 						n->options = lappend(n->options,
+-											 makeDefElem("verbose", NULL, @3));
++											 makeDefElem("verbose", NULL, @3.start));
+ 					$$ = (Node *) n;
+ 				}
+ 		| EXPLAIN VERBOSE ExplainableStmt
+@@ -12011,7 +12031,7 @@
+ 					ExplainStmt *n = makeNode(ExplainStmt);
+ 
+ 					n->query = $3;
+-					n->options = list_make1(makeDefElem("verbose", NULL, @2));
++					n->options = list_make1(makeDefElem("verbose", NULL, @2.start));
+ 					$$ = (Node *) n;
+ 				}
+ 		| EXPLAIN '(' utility_option_list ')' ExplainableStmt
+@@ -12137,7 +12157,7 @@
+ 
+ 						n->name = $2;
+ 						n->isall = false;
+-						n->location = @2;
++						n->location = @2.start;
+ 						$$ = (Node *) n;
+ 					}
+ 				| DEALLOCATE PREPARE name
+@@ -12146,7 +12166,7 @@
+ 
+ 						n->name = $3;
+ 						n->isall = false;
+-						n->location = @3;
++						n->location = @3.start;
+ 						$$ = (Node *) n;
+ 					}
+ 				| DEALLOCATE ALL
+@@ -12260,7 +12280,7 @@
+ 					$$->name = $1;
+ 					$$->indirection = check_indirection($2, yyscanner);
+ 					$$->val = NULL;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 		;
+ 
+@@ -12272,7 +12292,7 @@
+ 					$$->infer = $3;
+ 					$$->targetList = $7;
+ 					$$->whereClause = $8;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			|
+ 			ON CONFLICT opt_conf_expr DO NOTHING
+@@ -12282,7 +12302,7 @@
+ 					$$->infer = $3;
+ 					$$->targetList = NIL;
+ 					$$->whereClause = NULL;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| /*EMPTY*/
+ 				{
+@@ -12297,7 +12317,7 @@
+ 					$$->indexElems = $2;
+ 					$$->whereClause = $4;
+ 					$$->conname = NULL;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			|
+ 			ON CONSTRAINT name
+@@ -12306,7 +12326,7 @@
+ 					$$->indexElems = NIL;
+ 					$$->whereClause = NULL;
+ 					$$->conname = $3;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| /*EMPTY*/
+ 				{
+@@ -12456,7 +12476,7 @@
+ 					$$->name = $1;
+ 					$$->indirection = check_indirection($2, yyscanner);
+ 					$$->val = NULL;	/* upper production sets this */
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 		;
+ 
+@@ -12750,7 +12770,7 @@
+ 					insertSelectOptions((SelectStmt *) $1, $2, NIL,
+ 										NULL, NULL,
+ 										yyscanner);
+-					$$ = $1;
++					$$ = nodeExtent($1, @$);
+ 				}
+ 			| select_clause opt_sort_clause for_locking_clause opt_select_limit
+ 				{
+@@ -12758,7 +12778,7 @@
+ 										$4,
+ 										NULL,
+ 										yyscanner);
+-					$$ = $1;
++					$$ = nodeExtent($1, @$);
+ 				}
+ 			| select_clause opt_sort_clause select_limit opt_for_locking_clause
+ 				{
+@@ -12766,7 +12786,7 @@
+ 										$3,
+ 										NULL,
+ 										yyscanner);
+-					$$ = $1;
++					$$ = nodeExtent($1, @$);
+ 				}
+ 			| with_clause select_clause
+ 				{
+@@ -12774,7 +12794,7 @@
+ 										NULL,
+ 										$1,
+ 										yyscanner);
+-					$$ = $2;
++					$$ = nodeExtent($2, @$);
+ 				}
+ 			| with_clause select_clause sort_clause
+ 				{
+@@ -12782,7 +12802,7 @@
+ 										NULL,
+ 										$1,
+ 										yyscanner);
+-					$$ = $2;
++					$$ = nodeExtent($2, @$);
+ 				}
+ 			| with_clause select_clause opt_sort_clause for_locking_clause opt_select_limit
+ 				{
+@@ -12790,7 +12810,7 @@
+ 										$5,
+ 										$1,
+ 										yyscanner);
+-					$$ = $2;
++					$$ = nodeExtent($2, @$);
+ 				}
+ 			| with_clause select_clause opt_sort_clause select_limit opt_for_locking_clause
+ 				{
+@@ -12798,7 +12818,7 @@
+ 										$4,
+ 										$1,
+ 										yyscanner);
+-					$$ = $2;
++					$$ = nodeExtent($2, @$);
+ 				}
+ 		;
+ 
+@@ -12850,7 +12870,7 @@
+ 					n->groupDistinct = ($7)->distinct;
+ 					n->havingClause = $8;
+ 					n->windowClause = $9;
+-					$$ = (Node *) n;
++					$$ = nodeExtent((Node *) n, @$);
+ 				}
+ 			| SELECT distinct_clause target_list
+ 			into_clause from_clause where_clause
+@@ -12867,7 +12887,7 @@
+ 					n->groupDistinct = ($7)->distinct;
+ 					n->havingClause = $8;
+ 					n->windowClause = $9;
+-					$$ = (Node *) n;
++					$$ = nodeExtent((Node *) n, @$);
+ 				}
+ 			| values_clause							{ $$ = $1; }
+ 			| TABLE relation_expr
+@@ -12887,19 +12907,19 @@
+ 
+ 					n->targetList = list_make1(rt);
+ 					n->fromClause = list_make1($2);
+-					$$ = (Node *) n;
++					$$ = nodeExtent((Node *) n, @$);
+ 				}
+ 			| select_clause UNION set_quantifier select_clause
+ 				{
+-					$$ = makeSetOp(SETOP_UNION, $3 == SET_QUANTIFIER_ALL, $1, $4);
++					$$ = nodeExtent(makeSetOp(SETOP_UNION, $3 == SET_QUANTIFIER_ALL, $1, $4), @$);
+ 				}
+ 			| select_clause INTERSECT set_quantifier select_clause
+ 				{
+-					$$ = makeSetOp(SETOP_INTERSECT, $3 == SET_QUANTIFIER_ALL, $1, $4);
++					$$ = nodeExtent(makeSetOp(SETOP_INTERSECT, $3 == SET_QUANTIFIER_ALL, $1, $4), @$);
+ 				}
+ 			| select_clause EXCEPT set_quantifier select_clause
+ 				{
+-					$$ = makeSetOp(SETOP_EXCEPT, $3 == SET_QUANTIFIER_ALL, $1, $4);
++					$$ = nodeExtent(makeSetOp(SETOP_EXCEPT, $3 == SET_QUANTIFIER_ALL, $1, $4), @$);
+ 				}
+ 		;
+ 
+@@ -12917,21 +12937,21 @@
+ 				$$ = makeNode(WithClause);
+ 				$$->ctes = $2;
+ 				$$->recursive = false;
+-				$$->location = @1;
++				$$->location = @1.start;
+ 			}
+ 		| WITH_LA cte_list
+ 			{
+ 				$$ = makeNode(WithClause);
+ 				$$->ctes = $2;
+ 				$$->recursive = false;
+-				$$->location = @1;
++				$$->location = @1.start;
+ 			}
+ 		| WITH RECURSIVE cte_list
+ 			{
+ 				$$ = makeNode(WithClause);
+ 				$$->ctes = $3;
+ 				$$->recursive = true;
+-				$$->location = @1;
++				$$->location = @1.start;
+ 			}
+ 		;
+ 
+@@ -12950,7 +12970,7 @@
+ 				n->ctequery = $6;
+ 				n->search_clause = castNode(CTESearchClause, $8);
+ 				n->cycle_clause = castNode(CTECycleClause, $9);
+-				n->location = @1;
++				n->location = @1.start;
+ 				$$ = (Node *) n;
+ 			}
+ 		;
+@@ -12969,7 +12989,7 @@
+ 				n->search_col_list = $5;
+ 				n->search_breadth_first = false;
+ 				n->search_seq_column = $7;
+-				n->location = @1;
++				n->location = @1.start;
+ 				$$ = (Node *) n;
+ 			}
+ 		| SEARCH BREADTH FIRST_P BY columnList SET ColId
+@@ -12979,7 +12999,7 @@
+ 				n->search_col_list = $5;
+ 				n->search_breadth_first = true;
+ 				n->search_seq_column = $7;
+-				n->location = @1;
++				n->location = @1.start;
+ 				$$ = (Node *) n;
+ 			}
+ 		| /*EMPTY*/
+@@ -12998,7 +13018,7 @@
+ 				n->cycle_mark_value = $6;
+ 				n->cycle_mark_default = $8;
+ 				n->cycle_path_column = $10;
+-				n->location = @1;
++				n->location = @1.start;
+ 				$$ = (Node *) n;
+ 			}
+ 		| CYCLE columnList SET ColId USING ColId
+@@ -13010,7 +13030,7 @@
+ 				n->cycle_mark_value = makeBoolAConst(true, -1);
+ 				n->cycle_mark_default = makeBoolAConst(false, -1);
+ 				n->cycle_path_column = $6;
+-				n->location = @1;
++				n->location = @1.start;
+ 				$$ = (Node *) n;
+ 			}
+ 		| /*EMPTY*/
+@@ -13069,7 +13089,7 @@
+ 				{
+ 					ereport(WARNING,
+ 							(errmsg("GLOBAL is deprecated in temporary table creation"),
+-							 parser_errposition(@1)));
++							 parser_errposition(@1.start)));
+ 					$$ = $4;
+ 					$$->relpersistence = RELPERSISTENCE_TEMP;
+ 				}
+@@ -13077,7 +13097,7 @@
+ 				{
+ 					ereport(WARNING,
+ 							(errmsg("GLOBAL is deprecated in temporary table creation"),
+-							 parser_errposition(@1)));
++							 parser_errposition(@1.start)));
+ 					$$ = $4;
+ 					$$->relpersistence = RELPERSISTENCE_TEMP;
+ 				}
+@@ -13147,7 +13167,7 @@
+ 					$$->sortby_dir = SORTBY_USING;
+ 					$$->sortby_nulls = $4;
+ 					$$->useOp = $3;
+-					$$->location = @3;
++					$$->location = @3.start;
+ 				}
+ 			| a_expr opt_asc_desc opt_nulls_order
+ 				{
+@@ -13209,7 +13229,7 @@
+ 							(errcode(ERRCODE_SYNTAX_ERROR),
+ 							 errmsg("LIMIT #,# syntax is not supported"),
+ 							 errhint("Use separate LIMIT and OFFSET clauses."),
+-							 parser_errposition(@1)));
++							 parser_errposition(@1.start)));
+ 				}
+ 			/* SQL:2008 syntax */
+ 			/* to avoid shift/reduce conflicts, handle the optional value with
+@@ -13269,7 +13289,7 @@
+ 			| ALL
+ 				{
+ 					/* LIMIT ALL is represented as a NULL constant */
+-					$$ = makeNullAConst(@1);
++					$$ = makeNullAConst(@1.start);
+ 				}
+ 		;
+ 
+@@ -13296,14 +13316,14 @@
+ select_fetch_first_value:
+ 			c_expr									{ $$ = $1; }
+ 			| '+' I_or_F_const
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, $2, @1); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, $2, @1.start); }
+ 			| '-' I_or_F_const
+-				{ $$ = doNegate($2, @1); }
++				{ $$ = doNegate($2, @1.start); }
+ 		;
+ 
+ I_or_F_const:
+-			Iconst									{ $$ = makeIntConst($1,@1); }
+-			| FCONST								{ $$ = makeFloatConst($1,@1); }
++			Iconst									{ $$ = makeIntConst($1,@1.start); }
++			| FCONST								{ $$ = makeFloatConst($1,@1.start); }
+ 		;
+ 
+ /* noise words */
+@@ -13371,7 +13391,7 @@
+ empty_grouping_set:
+ 			'(' ')'
+ 				{
+-					$$ = (Node *) makeGroupingSet(GROUPING_SET_EMPTY, NIL, @1);
++					$$ = (Node *) makeGroupingSet(GROUPING_SET_EMPTY, NIL, @1.start);
+ 				}
+ 		;
+ 
+@@ -13384,21 +13404,21 @@
+ rollup_clause:
+ 			ROLLUP '(' expr_list ')'
+ 				{
+-					$$ = (Node *) makeGroupingSet(GROUPING_SET_ROLLUP, $3, @1);
++					$$ = (Node *) makeGroupingSet(GROUPING_SET_ROLLUP, $3, @1.start);
+ 				}
+ 		;
+ 
+ cube_clause:
+ 			CUBE '(' expr_list ')'
+ 				{
+-					$$ = (Node *) makeGroupingSet(GROUPING_SET_CUBE, $3, @1);
++					$$ = (Node *) makeGroupingSet(GROUPING_SET_CUBE, $3, @1.start);
+ 				}
+ 		;
+ 
+ grouping_sets_clause:
+ 			GROUPING SETS '(' group_by_list ')'
+ 				{
+-					$$ = (Node *) makeGroupingSet(GROUPING_SET_SETS, $4, @1);
++					$$ = (Node *) makeGroupingSet(GROUPING_SET_SETS, $4, @1.start);
+ 				}
+ 		;
+ 
+@@ -13458,7 +13478,7 @@
+ 					SelectStmt *n = makeNode(SelectStmt);
+ 
+ 					n->valuesLists = list_make1($3);
+-					$$ = (Node *) n;
++					$$ = nodeExtent((Node *) n, @$);
+ 				}
+ 			| values_clause ',' '(' expr_list ')'
+ 				{
+@@ -13890,7 +13910,7 @@
+ 					n->method = $2;
+ 					n->args = $4;
+ 					n->repeatable = $6;
+-					n->location = @2;
++					n->location = @2.start;
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -14007,7 +14027,7 @@
+ 					n->collClause = (CollateClause *) $3;
+ 					n->collOid = InvalidOid;
+ 					n->constraints = NIL;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -14024,7 +14044,7 @@
+ 					n->docexpr = $4;
+ 					n->columns = $6;
+ 					n->namespaces = NIL;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| XMLTABLE '(' XMLNAMESPACES '(' xml_namespace_list ')' ','
+@@ -14036,7 +14056,7 @@
+ 					n->docexpr = $9;
+ 					n->columns = $11;
+ 					n->namespaces = $5;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -14056,7 +14076,7 @@
+ 					fc->is_not_null = false;
+ 					fc->colexpr = NULL;
+ 					fc->coldefexpr = NULL;
+-					fc->location = @1;
++					fc->location = @1.start;
+ 
+ 					$$ = (Node *) fc;
+ 				}
+@@ -14072,7 +14092,7 @@
+ 					fc->is_not_null = false;
+ 					fc->colexpr = NULL;
+ 					fc->coldefexpr = NULL;
+-					fc->location = @1;
++					fc->location = @1.start;
+ 
+ 					foreach(option, $3)
+ 					{
+@@ -14124,7 +14144,7 @@
+ 					fc->colname = $1;
+ 					fc->for_ordinality = true;
+ 					/* other fields are ignored, initialized by makeNode */
+-					fc->location = @1;
++					fc->location = @1.start;
+ 
+ 					$$ = (Node *) fc;
+ 				}
+@@ -14144,17 +14164,17 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_SYNTAX_ERROR),
+ 								 errmsg("option name \"%s\" cannot be used in XMLTABLE", $1),
+-								 parser_errposition(@1)));
+-					$$ = makeDefElem($1, $2, @1);
++								 parser_errposition(@1.start)));
++					$$ = makeDefElem($1, $2, @1.start);
+ 				}
+ 			| DEFAULT b_expr
+-				{ $$ = makeDefElem("default", $2, @1); }
++				{ $$ = makeDefElem("default", $2, @1.start); }
+ 			| NOT NULL_P
+-				{ $$ = makeDefElem("__pg__is_not_null", (Node *) makeBoolean(true), @1); }
++				{ $$ = makeDefElem("__pg__is_not_null", (Node *) makeBoolean(true), @1.start); }
+ 			| NULL_P
+-				{ $$ = makeDefElem("__pg__is_not_null", (Node *) makeBoolean(false), @1); }
++				{ $$ = makeDefElem("__pg__is_not_null", (Node *) makeBoolean(false), @1.start); }
+ 			| PATH b_expr
+-				{ $$ = makeDefElem("path", $2, @1); }
++				{ $$ = makeDefElem("path", $2, @1.start); }
+ 		;
+ 
+ xml_namespace_list:
+@@ -14171,7 +14191,7 @@
+ 					$$->name = $3;
+ 					$$->indirection = NIL;
+ 					$$->val = $1;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| DEFAULT b_expr
+ 				{
+@@ -14179,7 +14199,7 @@
+ 					$$->name = NULL;
+ 					$$->indirection = NIL;
+ 					$$->val = $2;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 		;
+ 
+@@ -14200,13 +14220,13 @@
+ 						ereport(ERROR,
+ 								errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 								errmsg("only string constants are supported in JSON_TABLE path specification"),
+-								parser_errposition(@5));
++								parser_errposition(@5.start));
+ 					pathstring = castNode(A_Const, $5)->val.sval.sval;
+-					n->pathspec = makeJsonTablePathSpec(pathstring, $6, @5, @6);
++					n->pathspec = makeJsonTablePathSpec(pathstring, $6, @5.start, @6.start);
+ 					n->passing = $7;
+ 					n->columns = $10;
+ 					n->on_error = (JsonBehavior *) $12;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -14230,7 +14250,7 @@
+ 
+ 					n->coltype = JTC_FOR_ORDINALITY;
+ 					n->name = $1;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| ColId Typename
+@@ -14250,7 +14270,7 @@
+ 					n->quotes = $5;
+ 					n->on_empty = (JsonBehavior *) linitial($6);
+ 					n->on_error = (JsonBehavior *) lsecond($6);
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| ColId Typename json_format_clause
+@@ -14270,7 +14290,7 @@
+ 					n->quotes = $6;
+ 					n->on_empty = (JsonBehavior *) linitial($7);
+ 					n->on_error = (JsonBehavior *) lsecond($7);
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| ColId Typename
+@@ -14288,7 +14308,7 @@
+ 					n->pathspec = (JsonTablePathSpec *) $4;
+ 					n->on_empty = NULL;
+ 					n->on_error = (JsonBehavior *) $5;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| NESTED path_opt Sconst
+@@ -14298,9 +14318,9 @@
+ 
+ 					n->coltype = JTC_NESTED;
+ 					n->pathspec = (JsonTablePathSpec *)
+-						makeJsonTablePathSpec($3, NULL, @3, -1);
++						makeJsonTablePathSpec($3, NULL, @3.start, -1);
+ 					n->columns = $6;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| NESTED path_opt Sconst AS name
+@@ -14310,9 +14330,9 @@
+ 
+ 					n->coltype = JTC_NESTED;
+ 					n->pathspec = (JsonTablePathSpec *)
+-						makeJsonTablePathSpec($3, $5, @3, @5);
++						makeJsonTablePathSpec($3, $5, @3.start, @5.start);
+ 					n->columns = $8;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -14324,7 +14344,7 @@
+ 
+ json_table_column_path_clause_opt:
+ 			PATH Sconst
+-				{ $$ = (Node *) makeJsonTablePathSpec($2, NULL, @2, -1); }
++				{ $$ = (Node *) makeJsonTablePathSpec($2, NULL, @2.start, -1); }
+ 			| /* EMPTY */
+ 				{ $$ = NULL; }
+ 		;
+@@ -14399,7 +14419,7 @@
+ 				{
+ 					$$ = $1;
+ 					$$->typmods = list_make2(makeIntConst(INTERVAL_FULL_RANGE, -1),
+-											 makeIntConst($3, @3));
++											 makeIntConst($3, @3.start));
+ 				}
+ 			| JsonType								{ $$ = $1; }
+ 		;
+@@ -14435,13 +14455,13 @@
+ 				{
+ 					$$ = makeTypeName($1);
+ 					$$->typmods = $2;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| type_function_name attrs opt_type_modifiers
+ 				{
+ 					$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
+ 					$$->typmods = $3;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 		;
+ 
+@@ -14455,60 +14475,60 @@
+ Numeric:	INT_P
+ 				{
+ 					$$ = SystemTypeName("int4");
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| INTEGER
+ 				{
+ 					$$ = SystemTypeName("int4");
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| SMALLINT
+ 				{
+ 					$$ = SystemTypeName("int2");
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| BIGINT
+ 				{
+ 					$$ = SystemTypeName("int8");
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| REAL
+ 				{
+ 					$$ = SystemTypeName("float4");
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| FLOAT_P opt_float
+ 				{
+ 					$$ = $2;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| DOUBLE_P PRECISION
+ 				{
+ 					$$ = SystemTypeName("float8");
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| DECIMAL_P opt_type_modifiers
+ 				{
+ 					$$ = SystemTypeName("numeric");
+ 					$$->typmods = $2;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| DEC opt_type_modifiers
+ 				{
+ 					$$ = SystemTypeName("numeric");
+ 					$$->typmods = $2;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| NUMERIC opt_type_modifiers
+ 				{
+ 					$$ = SystemTypeName("numeric");
+ 					$$->typmods = $2;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| BOOLEAN_P
+ 				{
+ 					$$ = SystemTypeName("bool");
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 		;
+ 
+@@ -14522,7 +14542,7 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+ 								 errmsg("precision for type float must be at least 1 bit"),
+-								 parser_errposition(@2)));
++								 parser_errposition(@2.start)));
+ 					else if ($2 <= 24)
+ 						$$ = SystemTypeName("float4");
+ 					else if ($2 <= 53)
+@@ -14531,7 +14551,7 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+ 								 errmsg("precision for type float must be less than 54 bits"),
+-								 parser_errposition(@2)));
++								 parser_errposition(@2.start)));
+ 				}
+ 			| /*EMPTY*/
+ 				{
+@@ -14574,7 +14594,7 @@
+ 					typname = $2 ? "varbit" : "bit";
+ 					$$ = SystemTypeName(typname);
+ 					$$->typmods = $4;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 		;
+ 
+@@ -14591,7 +14611,7 @@
+ 						$$ = SystemTypeName("bit");
+ 						$$->typmods = list_make1(makeIntConst(1, -1));
+ 					}
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 		;
+ 
+@@ -14630,8 +14650,8 @@
+ CharacterWithLength:  character '(' Iconst ')'
+ 				{
+ 					$$ = SystemTypeName($1);
+-					$$->typmods = list_make1(makeIntConst($3, @3));
+-					$$->location = @1;
++					$$->typmods = list_make1(makeIntConst($3, @3.start));
++					$$->location = @1.start;
+ 				}
+ 		;
+ 
+@@ -14641,7 +14661,7 @@
+ 					/* char defaults to char(1), varchar to no limit */
+ 					if (strcmp($1, "bpchar") == 0)
+ 						$$->typmods = list_make1(makeIntConst(1, -1));
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 		;
+ 
+@@ -14674,8 +14694,8 @@
+ 						$$ = SystemTypeName("timestamptz");
+ 					else
+ 						$$ = SystemTypeName("timestamp");
+-					$$->typmods = list_make1(makeIntConst($3, @3));
+-					$$->location = @1;
++					$$->typmods = list_make1(makeIntConst($3, @3.start));
++					$$->location = @1.start;
+ 				}
+ 			| TIMESTAMP opt_timezone
+ 				{
+@@ -14683,7 +14703,7 @@
+ 						$$ = SystemTypeName("timestamptz");
+ 					else
+ 						$$ = SystemTypeName("timestamp");
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| TIME '(' Iconst ')' opt_timezone
+ 				{
+@@ -14691,8 +14711,8 @@
+ 						$$ = SystemTypeName("timetz");
+ 					else
+ 						$$ = SystemTypeName("time");
+-					$$->typmods = list_make1(makeIntConst($3, @3));
+-					$$->location = @1;
++					$$->typmods = list_make1(makeIntConst($3, @3.start));
++					$$->location = @1.start;
+ 				}
+ 			| TIME opt_timezone
+ 				{
+@@ -14700,7 +14720,7 @@
+ 						$$ = SystemTypeName("timetz");
+ 					else
+ 						$$ = SystemTypeName("time");
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 		;
+ 
+@@ -14708,7 +14728,7 @@
+ 			INTERVAL
+ 				{
+ 					$$ = SystemTypeName("interval");
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 		;
+ 
+@@ -14720,32 +14740,32 @@
+ 
+ opt_interval:
+ 			YEAR_P
+-				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(YEAR), @1)); }
++				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(YEAR), @1.start)); }
+ 			| MONTH_P
+-				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(MONTH), @1)); }
++				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(MONTH), @1.start)); }
+ 			| DAY_P
+-				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(DAY), @1)); }
++				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(DAY), @1.start)); }
+ 			| HOUR_P
+-				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(HOUR), @1)); }
++				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(HOUR), @1.start)); }
+ 			| MINUTE_P
+-				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(MINUTE), @1)); }
++				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(MINUTE), @1.start)); }
+ 			| interval_second
+ 				{ $$ = $1; }
+ 			| YEAR_P TO MONTH_P
+ 				{
+ 					$$ = list_make1(makeIntConst(INTERVAL_MASK(YEAR) |
+-												 INTERVAL_MASK(MONTH), @1));
++												 INTERVAL_MASK(MONTH), @1.start));
+ 				}
+ 			| DAY_P TO HOUR_P
+ 				{
+ 					$$ = list_make1(makeIntConst(INTERVAL_MASK(DAY) |
+-												 INTERVAL_MASK(HOUR), @1));
++												 INTERVAL_MASK(HOUR), @1.start));
+ 				}
+ 			| DAY_P TO MINUTE_P
+ 				{
+ 					$$ = list_make1(makeIntConst(INTERVAL_MASK(DAY) |
+ 												 INTERVAL_MASK(HOUR) |
+-												 INTERVAL_MASK(MINUTE), @1));
++												 INTERVAL_MASK(MINUTE), @1.start));
+ 				}
+ 			| DAY_P TO interval_second
+ 				{
+@@ -14753,25 +14773,25 @@
+ 					linitial($$) = makeIntConst(INTERVAL_MASK(DAY) |
+ 												INTERVAL_MASK(HOUR) |
+ 												INTERVAL_MASK(MINUTE) |
+-												INTERVAL_MASK(SECOND), @1);
++												INTERVAL_MASK(SECOND), @1.start);
+ 				}
+ 			| HOUR_P TO MINUTE_P
+ 				{
+ 					$$ = list_make1(makeIntConst(INTERVAL_MASK(HOUR) |
+-												 INTERVAL_MASK(MINUTE), @1));
++												 INTERVAL_MASK(MINUTE), @1.start));
+ 				}
+ 			| HOUR_P TO interval_second
+ 				{
+ 					$$ = $3;
+ 					linitial($$) = makeIntConst(INTERVAL_MASK(HOUR) |
+ 												INTERVAL_MASK(MINUTE) |
+-												INTERVAL_MASK(SECOND), @1);
++												INTERVAL_MASK(SECOND), @1.start);
+ 				}
+ 			| MINUTE_P TO interval_second
+ 				{
+ 					$$ = $3;
+ 					linitial($$) = makeIntConst(INTERVAL_MASK(MINUTE) |
+-												INTERVAL_MASK(SECOND), @1);
++												INTERVAL_MASK(SECOND), @1.start);
+ 				}
+ 			| /*EMPTY*/
+ 				{ $$ = NIL; }
+@@ -14780,12 +14800,12 @@
+ interval_second:
+ 			SECOND_P
+ 				{
+-					$$ = list_make1(makeIntConst(INTERVAL_MASK(SECOND), @1));
++					$$ = list_make1(makeIntConst(INTERVAL_MASK(SECOND), @1.start));
+ 				}
+ 			| SECOND_P '(' Iconst ')'
+ 				{
+-					$$ = list_make2(makeIntConst(INTERVAL_MASK(SECOND), @1),
+-									makeIntConst($3, @3));
++					$$ = list_make2(makeIntConst(INTERVAL_MASK(SECOND), @1.start),
++									makeIntConst($3, @3.start));
+ 				}
+ 		;
+ 
+@@ -14793,7 +14813,7 @@
+ 			JSON
+ 				{
+ 					$$ = SystemTypeName("json");
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 		;
+ 
+@@ -14827,29 +14847,29 @@
+  */
+ a_expr:		c_expr									{ $$ = $1; }
+ 			| a_expr TYPECAST Typename
+-					{ $$ = makeTypeCast($1, $3, @2); }
++					{ $$ = makeTypeCast($1, $3, @2.start); }
+ 			| a_expr COLLATE any_name
+ 				{
+ 					CollateClause *n = makeNode(CollateClause);
+ 
+ 					n->arg = $1;
+ 					n->collname = $3;
+-					n->location = @2;
++					n->location = @2.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| a_expr AT TIME ZONE a_expr			%prec AT
+ 				{
+-					$$ = (Node *) makeFuncCall(SystemFuncName("timezone"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("timezone"),
+ 											   list_make2($5, $1),
+ 											   COERCE_SQL_SYNTAX,
+-											   @2);
++											   @2.start), @$);
+ 				}
+ 			| a_expr AT LOCAL						%prec AT
+ 				{
+-					$$ = (Node *) makeFuncCall(SystemFuncName("timezone"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("timezone"),
+ 											   list_make1($1),
+ 											   COERCE_SQL_SYNTAX,
+-											   -1);
++											   -1), @$);
+ 				}
+ 		/*
+ 		 * These operators must be called out explicitly in order to make use
+@@ -14861,140 +14881,140 @@
+ 		 * also to b_expr and to the MathOp list below.
+ 		 */
+ 			| '+' a_expr					%prec UMINUS
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, $2, @1); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, $2, @1.start); }
+ 			| '-' a_expr					%prec UMINUS
+-				{ $$ = doNegate($2, @1); }
++				{ $$ = doNegate($2, @1.start); }
+ 			| a_expr '+' a_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", $1, $3, @2.start); }
+ 			| a_expr '-' a_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "-", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "-", $1, $3, @2.start); }
+ 			| a_expr '*' a_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "*", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "*", $1, $3, @2.start); }
+ 			| a_expr '/' a_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "/", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "/", $1, $3, @2.start); }
+ 			| a_expr '%' a_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "%", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "%", $1, $3, @2.start); }
+ 			| a_expr '^' a_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "^", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "^", $1, $3, @2.start); }
+ 			| a_expr '<' a_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<", $1, $3, @2.start); }
+ 			| a_expr '>' a_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, ">", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, ">", $1, $3, @2.start); }
+ 			| a_expr '=' a_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", $1, $3, @2.start); }
+ 			| a_expr LESS_EQUALS a_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<=", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<=", $1, $3, @2.start); }
+ 			| a_expr GREATER_EQUALS a_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, ">=", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, ">=", $1, $3, @2.start); }
+ 			| a_expr NOT_EQUALS a_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<>", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<>", $1, $3, @2.start); }
+ 
+ 			| a_expr qual_Op a_expr				%prec Op
+-				{ $$ = (Node *) makeA_Expr(AEXPR_OP, $2, $1, $3, @2); }
++				{ $$ = (Node *) makeA_Expr(AEXPR_OP, $2, $1, $3, @2.start); }
+ 			| qual_Op a_expr					%prec Op
+-				{ $$ = (Node *) makeA_Expr(AEXPR_OP, $1, NULL, $2, @1); }
++				{ $$ = (Node *) makeA_Expr(AEXPR_OP, $1, NULL, $2, @1.start); }
+ 
+ 			| a_expr AND a_expr
+-				{ $$ = makeAndExpr($1, $3, @2); }
++				{ $$ = makeAndExpr($1, $3, @2.start); }
+ 			| a_expr OR a_expr
+-				{ $$ = makeOrExpr($1, $3, @2); }
++				{ $$ = makeOrExpr($1, $3, @2.start); }
+ 			| NOT a_expr
+-				{ $$ = makeNotExpr($2, @1); }
++				{ $$ = makeNotExpr($2, @1.start); }
+ 			| NOT_LA a_expr						%prec NOT
+-				{ $$ = makeNotExpr($2, @1); }
++				{ $$ = makeNotExpr($2, @1.start); }
+ 
+ 			| a_expr LIKE a_expr
+ 				{
+ 					$$ = (Node *) makeSimpleA_Expr(AEXPR_LIKE, "~~",
+-												   $1, $3, @2);
++												   $1, $3, @2.start);
+ 				}
+ 			| a_expr LIKE a_expr ESCAPE a_expr					%prec LIKE
+ 				{
+-					FuncCall   *n = makeFuncCall(SystemFuncName("like_escape"),
++					FuncCall   *n = fcExtent(makeFuncCall(SystemFuncName("like_escape"),
+ 												 list_make2($3, $5),
+ 												 COERCE_EXPLICIT_CALL,
+-												 @2);
++												 @2.start), @$);
+ 					$$ = (Node *) makeSimpleA_Expr(AEXPR_LIKE, "~~",
+-												   $1, (Node *) n, @2);
++												   $1, (Node *) n, @2.start);
+ 				}
+ 			| a_expr NOT_LA LIKE a_expr							%prec NOT_LA
+ 				{
+ 					$$ = (Node *) makeSimpleA_Expr(AEXPR_LIKE, "!~~",
+-												   $1, $4, @2);
++												   $1, $4, @2.start);
+ 				}
+ 			| a_expr NOT_LA LIKE a_expr ESCAPE a_expr			%prec NOT_LA
+ 				{
+-					FuncCall   *n = makeFuncCall(SystemFuncName("like_escape"),
++					FuncCall   *n = fcExtent(makeFuncCall(SystemFuncName("like_escape"),
+ 												 list_make2($4, $6),
+ 												 COERCE_EXPLICIT_CALL,
+-												 @2);
++												 @2.start), @$);
+ 					$$ = (Node *) makeSimpleA_Expr(AEXPR_LIKE, "!~~",
+-												   $1, (Node *) n, @2);
++												   $1, (Node *) n, @2.start);
+ 				}
+ 			| a_expr ILIKE a_expr
+ 				{
+ 					$$ = (Node *) makeSimpleA_Expr(AEXPR_ILIKE, "~~*",
+-												   $1, $3, @2);
++												   $1, $3, @2.start);
+ 				}
+ 			| a_expr ILIKE a_expr ESCAPE a_expr					%prec ILIKE
+ 				{
+-					FuncCall   *n = makeFuncCall(SystemFuncName("like_escape"),
++					FuncCall   *n = fcExtent(makeFuncCall(SystemFuncName("like_escape"),
+ 												 list_make2($3, $5),
+ 												 COERCE_EXPLICIT_CALL,
+-												 @2);
++												 @2.start), @$);
+ 					$$ = (Node *) makeSimpleA_Expr(AEXPR_ILIKE, "~~*",
+-												   $1, (Node *) n, @2);
++												   $1, (Node *) n, @2.start);
+ 				}
+ 			| a_expr NOT_LA ILIKE a_expr						%prec NOT_LA
+ 				{
+ 					$$ = (Node *) makeSimpleA_Expr(AEXPR_ILIKE, "!~~*",
+-												   $1, $4, @2);
++												   $1, $4, @2.start);
+ 				}
+ 			| a_expr NOT_LA ILIKE a_expr ESCAPE a_expr			%prec NOT_LA
+ 				{
+-					FuncCall   *n = makeFuncCall(SystemFuncName("like_escape"),
++					FuncCall   *n = fcExtent(makeFuncCall(SystemFuncName("like_escape"),
+ 												 list_make2($4, $6),
+ 												 COERCE_EXPLICIT_CALL,
+-												 @2);
++												 @2.start), @$);
+ 					$$ = (Node *) makeSimpleA_Expr(AEXPR_ILIKE, "!~~*",
+-												   $1, (Node *) n, @2);
++												   $1, (Node *) n, @2.start);
+ 				}
+ 
+ 			| a_expr SIMILAR TO a_expr							%prec SIMILAR
+ 				{
+-					FuncCall   *n = makeFuncCall(SystemFuncName("similar_to_escape"),
++					FuncCall   *n = fcExtent(makeFuncCall(SystemFuncName("similar_to_escape"),
+ 												 list_make1($4),
+ 												 COERCE_EXPLICIT_CALL,
+-												 @2);
++												 @2.start), @$);
+ 					$$ = (Node *) makeSimpleA_Expr(AEXPR_SIMILAR, "~",
+-												   $1, (Node *) n, @2);
++												   $1, (Node *) n, @2.start);
+ 				}
+ 			| a_expr SIMILAR TO a_expr ESCAPE a_expr			%prec SIMILAR
+ 				{
+-					FuncCall   *n = makeFuncCall(SystemFuncName("similar_to_escape"),
++					FuncCall   *n = fcExtent(makeFuncCall(SystemFuncName("similar_to_escape"),
+ 												 list_make2($4, $6),
+ 												 COERCE_EXPLICIT_CALL,
+-												 @2);
++												 @2.start), @$);
+ 					$$ = (Node *) makeSimpleA_Expr(AEXPR_SIMILAR, "~",
+-												   $1, (Node *) n, @2);
++												   $1, (Node *) n, @2.start);
+ 				}
+ 			| a_expr NOT_LA SIMILAR TO a_expr					%prec NOT_LA
+ 				{
+-					FuncCall   *n = makeFuncCall(SystemFuncName("similar_to_escape"),
++					FuncCall   *n = fcExtent(makeFuncCall(SystemFuncName("similar_to_escape"),
+ 												 list_make1($5),
+ 												 COERCE_EXPLICIT_CALL,
+-												 @2);
++												 @2.start), @$);
+ 					$$ = (Node *) makeSimpleA_Expr(AEXPR_SIMILAR, "!~",
+-												   $1, (Node *) n, @2);
++												   $1, (Node *) n, @2.start);
+ 				}
+ 			| a_expr NOT_LA SIMILAR TO a_expr ESCAPE a_expr		%prec NOT_LA
+ 				{
+-					FuncCall   *n = makeFuncCall(SystemFuncName("similar_to_escape"),
++					FuncCall   *n = fcExtent(makeFuncCall(SystemFuncName("similar_to_escape"),
+ 												 list_make2($5, $7),
+ 												 COERCE_EXPLICIT_CALL,
+-												 @2);
++												 @2.start), @$);
+ 					$$ = (Node *) makeSimpleA_Expr(AEXPR_SIMILAR, "!~",
+-												   $1, (Node *) n, @2);
++												   $1, (Node *) n, @2.start);
+ 				}
+ 
+ 			/* NullTest clause
+@@ -15012,7 +15032,7 @@
+ 
+ 					n->arg = (Expr *) $1;
+ 					n->nulltesttype = IS_NULL;
+-					n->location = @2;
++					n->location = @2.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| a_expr ISNULL
+@@ -15021,7 +15041,7 @@
+ 
+ 					n->arg = (Expr *) $1;
+ 					n->nulltesttype = IS_NULL;
+-					n->location = @2;
++					n->location = @2.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| a_expr IS NOT NULL_P						%prec IS
+@@ -15030,7 +15050,7 @@
+ 
+ 					n->arg = (Expr *) $1;
+ 					n->nulltesttype = IS_NOT_NULL;
+-					n->location = @2;
++					n->location = @2.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| a_expr NOTNULL
+@@ -15039,7 +15059,7 @@
+ 
+ 					n->arg = (Expr *) $1;
+ 					n->nulltesttype = IS_NOT_NULL;
+-					n->location = @2;
++					n->location = @2.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| row OVERLAPS row
+@@ -15048,16 +15068,16 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_SYNTAX_ERROR),
+ 								 errmsg("wrong number of parameters on left side of OVERLAPS expression"),
+-								 parser_errposition(@1)));
++								 parser_errposition(@1.start)));
+ 					if (list_length($3) != 2)
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_SYNTAX_ERROR),
+ 								 errmsg("wrong number of parameters on right side of OVERLAPS expression"),
+-								 parser_errposition(@3)));
+-					$$ = (Node *) makeFuncCall(SystemFuncName("overlaps"),
++								 parser_errposition(@3.start)));
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("overlaps"),
+ 											   list_concat($1, $3),
+ 											   COERCE_SQL_SYNTAX,
+-											   @2);
++											   @2.start), @$);
+ 				}
+ 			| a_expr IS TRUE_P							%prec IS
+ 				{
+@@ -15065,7 +15085,7 @@
+ 
+ 					b->arg = (Expr *) $1;
+ 					b->booltesttype = IS_TRUE;
+-					b->location = @2;
++					b->location = @2.start;
+ 					$$ = (Node *) b;
+ 				}
+ 			| a_expr IS NOT TRUE_P						%prec IS
+@@ -15074,7 +15094,7 @@
+ 
+ 					b->arg = (Expr *) $1;
+ 					b->booltesttype = IS_NOT_TRUE;
+-					b->location = @2;
++					b->location = @2.start;
+ 					$$ = (Node *) b;
+ 				}
+ 			| a_expr IS FALSE_P							%prec IS
+@@ -15083,7 +15103,7 @@
+ 
+ 					b->arg = (Expr *) $1;
+ 					b->booltesttype = IS_FALSE;
+-					b->location = @2;
++					b->location = @2.start;
+ 					$$ = (Node *) b;
+ 				}
+ 			| a_expr IS NOT FALSE_P						%prec IS
+@@ -15092,7 +15112,7 @@
+ 
+ 					b->arg = (Expr *) $1;
+ 					b->booltesttype = IS_NOT_FALSE;
+-					b->location = @2;
++					b->location = @2.start;
+ 					$$ = (Node *) b;
+ 				}
+ 			| a_expr IS UNKNOWN							%prec IS
+@@ -15101,7 +15121,7 @@
+ 
+ 					b->arg = (Expr *) $1;
+ 					b->booltesttype = IS_UNKNOWN;
+-					b->location = @2;
++					b->location = @2.start;
+ 					$$ = (Node *) b;
+ 				}
+ 			| a_expr IS NOT UNKNOWN						%prec IS
+@@ -15110,16 +15130,16 @@
+ 
+ 					b->arg = (Expr *) $1;
+ 					b->booltesttype = IS_NOT_UNKNOWN;
+-					b->location = @2;
++					b->location = @2.start;
+ 					$$ = (Node *) b;
+ 				}
+ 			| a_expr IS DISTINCT FROM a_expr			%prec IS
+ 				{
+-					$$ = (Node *) makeSimpleA_Expr(AEXPR_DISTINCT, "=", $1, $5, @2);
++					$$ = (Node *) makeSimpleA_Expr(AEXPR_DISTINCT, "=", $1, $5, @2.start);
+ 				}
+ 			| a_expr IS NOT DISTINCT FROM a_expr		%prec IS
+ 				{
+-					$$ = (Node *) makeSimpleA_Expr(AEXPR_NOT_DISTINCT, "=", $1, $6, @2);
++					$$ = (Node *) makeSimpleA_Expr(AEXPR_NOT_DISTINCT, "=", $1, $6, @2.start);
+ 				}
+ 			| a_expr BETWEEN opt_asymmetric b_expr AND a_expr		%prec BETWEEN
+ 				{
+@@ -15127,7 +15147,7 @@
+ 												   "BETWEEN",
+ 												   $1,
+ 												   (Node *) list_make2($4, $6),
+-												   @2);
++												   @2.start);
+ 				}
+ 			| a_expr NOT_LA BETWEEN opt_asymmetric b_expr AND a_expr %prec NOT_LA
+ 				{
+@@ -15135,7 +15155,7 @@
+ 												   "NOT BETWEEN",
+ 												   $1,
+ 												   (Node *) list_make2($5, $7),
+-												   @2);
++												   @2.start);
+ 				}
+ 			| a_expr BETWEEN SYMMETRIC b_expr AND a_expr			%prec BETWEEN
+ 				{
+@@ -15143,7 +15163,7 @@
+ 												   "BETWEEN SYMMETRIC",
+ 												   $1,
+ 												   (Node *) list_make2($4, $6),
+-												   @2);
++												   @2.start);
+ 				}
+ 			| a_expr NOT_LA BETWEEN SYMMETRIC b_expr AND a_expr		%prec NOT_LA
+ 				{
+@@ -15151,7 +15171,7 @@
+ 												   "NOT BETWEEN SYMMETRIC",
+ 												   $1,
+ 												   (Node *) list_make2($5, $7),
+-												   @2);
++												   @2.start);
+ 				}
+ 			| a_expr IN_P in_expr
+ 				{
+@@ -15165,13 +15185,13 @@
+ 						n->subLinkId = 0;
+ 						n->testexpr = $1;
+ 						n->operName = NIL;		/* show it's IN not = ANY */
+-						n->location = @2;
++						n->location = @2.start;
+ 						$$ = (Node *) n;
+ 					}
+ 					else
+ 					{
+ 						/* generate scalar IN expression */
+-						$$ = (Node *) makeSimpleA_Expr(AEXPR_IN, "=", $1, $3, @2);
++						$$ = (Node *) makeSimpleA_Expr(AEXPR_IN, "=", $1, $3, @2.start);
+ 					}
+ 				}
+ 			| a_expr NOT_LA IN_P in_expr						%prec NOT_LA
+@@ -15187,14 +15207,14 @@
+ 						n->subLinkId = 0;
+ 						n->testexpr = $1;
+ 						n->operName = NIL;		/* show it's IN not = ANY */
+-						n->location = @2;
++						n->location = @2.start;
+ 						/* Stick a NOT on top; must have same parse location */
+-						$$ = makeNotExpr((Node *) n, @2);
++						$$ = makeNotExpr((Node *) n, @2.start);
+ 					}
+ 					else
+ 					{
+ 						/* generate scalar NOT IN expression */
+-						$$ = (Node *) makeSimpleA_Expr(AEXPR_IN, "<>", $1, $4, @2);
++						$$ = (Node *) makeSimpleA_Expr(AEXPR_IN, "<>", $1, $4, @2.start);
+ 					}
+ 				}
+ 			| a_expr subquery_Op sub_type select_with_parens	%prec Op
+@@ -15206,15 +15226,15 @@
+ 					n->testexpr = $1;
+ 					n->operName = $2;
+ 					n->subselect = $4;
+-					n->location = @2;
++					n->location = @2.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| a_expr subquery_Op sub_type '(' a_expr ')'		%prec Op
+ 				{
+ 					if ($3 == ANY_SUBLINK)
+-						$$ = (Node *) makeA_Expr(AEXPR_OP_ANY, $2, $1, $5, @2);
++						$$ = (Node *) makeA_Expr(AEXPR_OP_ANY, $2, $1, $5, @2.start);
+ 					else
+-						$$ = (Node *) makeA_Expr(AEXPR_OP_ALL, $2, $1, $5, @2);
++						$$ = (Node *) makeA_Expr(AEXPR_OP_ALL, $2, $1, $5, @2.start);
+ 				}
+ 			| UNIQUE opt_unique_null_treatment select_with_parens
+ 				{
+@@ -15230,55 +15250,55 @@
+ 					ereport(ERROR,
+ 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 							 errmsg("UNIQUE predicate is not yet implemented"),
+-							 parser_errposition(@1)));
++							 parser_errposition(@1.start)));
+ 				}
+ 			| a_expr IS DOCUMENT_P					%prec IS
+ 				{
+ 					$$ = makeXmlExpr(IS_DOCUMENT, NULL, NIL,
+-									 list_make1($1), @2);
++									 list_make1($1), @2.start);
+ 				}
+ 			| a_expr IS NOT DOCUMENT_P				%prec IS
+ 				{
+ 					$$ = makeNotExpr(makeXmlExpr(IS_DOCUMENT, NULL, NIL,
+-												 list_make1($1), @2),
+-									 @2);
++												 list_make1($1), @2.start),
++									 @2.start);
+ 				}
+ 			| a_expr IS NORMALIZED								%prec IS
+ 				{
+-					$$ = (Node *) makeFuncCall(SystemFuncName("is_normalized"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("is_normalized"),
+ 											   list_make1($1),
+ 											   COERCE_SQL_SYNTAX,
+-											   @2);
++											   @2.start), @$);
+ 				}
+ 			| a_expr IS unicode_normal_form NORMALIZED			%prec IS
+ 				{
+-					$$ = (Node *) makeFuncCall(SystemFuncName("is_normalized"),
+-											   list_make2($1, makeStringConst($3, @3)),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("is_normalized"),
++											   list_make2($1, makeStringConst($3, @3.start)),
+ 											   COERCE_SQL_SYNTAX,
+-											   @2);
++											   @2.start), @$);
+ 				}
+ 			| a_expr IS NOT NORMALIZED							%prec IS
+ 				{
+-					$$ = makeNotExpr((Node *) makeFuncCall(SystemFuncName("is_normalized"),
++					$$ = makeNotExpr((Node *) fcExtent(makeFuncCall(SystemFuncName("is_normalized"),
+ 														   list_make1($1),
+ 														   COERCE_SQL_SYNTAX,
+-														   @2),
+-									 @2);
++														   @2.start), @$),
++									 @2.start);
+ 				}
+ 			| a_expr IS NOT unicode_normal_form NORMALIZED		%prec IS
+ 				{
+-					$$ = makeNotExpr((Node *) makeFuncCall(SystemFuncName("is_normalized"),
+-														   list_make2($1, makeStringConst($4, @4)),
++					$$ = makeNotExpr((Node *) fcExtent(makeFuncCall(SystemFuncName("is_normalized"),
++														   list_make2($1, makeStringConst($4, @4.start)),
+ 														   COERCE_SQL_SYNTAX,
+-														   @2),
+-									 @2);
++														   @2.start), @$),
++									 @2.start);
+ 				}
+ 			| a_expr IS json_predicate_type_constraint
+ 					json_key_uniqueness_constraint_opt		%prec IS
+ 				{
+ 					JsonFormat *format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
+ 
+-					$$ = makeJsonIsPredicate($1, format, $3, $4, @1);
++					$$ = makeJsonIsPredicate($1, format, $3, $4, @1.start);
+ 				}
+ 			/*
+ 			 * Required by SQL/JSON, but there are conflicts
+@@ -15287,7 +15307,7 @@
+ 				IS  json_predicate_type_constraint
+ 					json_key_uniqueness_constraint_opt		%prec IS
+ 				{
+-					$$ = makeJsonIsPredicate($1, $2, $4, $5, @1);
++					$$ = makeJsonIsPredicate($1, $2, $4, $5, @1.start);
+ 				}
+ 			*/
+ 			| a_expr IS NOT
+@@ -15296,7 +15316,7 @@
+ 				{
+ 					JsonFormat *format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
+ 
+-					$$ = makeNotExpr(makeJsonIsPredicate($1, format, $4, $5, @1), @1);
++					$$ = makeNotExpr(makeJsonIsPredicate($1, format, $4, $5, @1.start), @1.start);
+ 				}
+ 			/*
+ 			 * Required by SQL/JSON, but there are conflicts
+@@ -15306,7 +15326,7 @@
+ 					json_predicate_type_constraint
+ 					json_key_uniqueness_constraint_opt		%prec IS
+ 				{
+-					$$ = makeNotExpr(makeJsonIsPredicate($1, $2, $5, $6, @1), @1);
++					$$ = makeNotExpr(makeJsonIsPredicate($1, $2, $5, $6, @1.start), @1.start);
+ 				}
+ 			*/
+ 			| DEFAULT
+@@ -15321,7 +15341,7 @@
+ 					SetToDefault *n = makeNode(SetToDefault);
+ 
+ 					/* parse analysis will fill in the rest */
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -15338,57 +15358,57 @@
+ b_expr:		c_expr
+ 				{ $$ = $1; }
+ 			| b_expr TYPECAST Typename
+-				{ $$ = makeTypeCast($1, $3, @2); }
++				{ $$ = makeTypeCast($1, $3, @2.start); }
+ 			| '+' b_expr					%prec UMINUS
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, $2, @1); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, $2, @1.start); }
+ 			| '-' b_expr					%prec UMINUS
+-				{ $$ = doNegate($2, @1); }
++				{ $$ = doNegate($2, @1.start); }
+ 			| b_expr '+' b_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", $1, $3, @2.start); }
+ 			| b_expr '-' b_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "-", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "-", $1, $3, @2.start); }
+ 			| b_expr '*' b_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "*", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "*", $1, $3, @2.start); }
+ 			| b_expr '/' b_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "/", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "/", $1, $3, @2.start); }
+ 			| b_expr '%' b_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "%", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "%", $1, $3, @2.start); }
+ 			| b_expr '^' b_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "^", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "^", $1, $3, @2.start); }
+ 			| b_expr '<' b_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<", $1, $3, @2.start); }
+ 			| b_expr '>' b_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, ">", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, ">", $1, $3, @2.start); }
+ 			| b_expr '=' b_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", $1, $3, @2.start); }
+ 			| b_expr LESS_EQUALS b_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<=", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<=", $1, $3, @2.start); }
+ 			| b_expr GREATER_EQUALS b_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, ">=", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, ">=", $1, $3, @2.start); }
+ 			| b_expr NOT_EQUALS b_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<>", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<>", $1, $3, @2.start); }
+ 			| b_expr qual_Op b_expr				%prec Op
+-				{ $$ = (Node *) makeA_Expr(AEXPR_OP, $2, $1, $3, @2); }
++				{ $$ = (Node *) makeA_Expr(AEXPR_OP, $2, $1, $3, @2.start); }
+ 			| qual_Op b_expr					%prec Op
+-				{ $$ = (Node *) makeA_Expr(AEXPR_OP, $1, NULL, $2, @1); }
++				{ $$ = (Node *) makeA_Expr(AEXPR_OP, $1, NULL, $2, @1.start); }
+ 			| b_expr IS DISTINCT FROM b_expr		%prec IS
+ 				{
+-					$$ = (Node *) makeSimpleA_Expr(AEXPR_DISTINCT, "=", $1, $5, @2);
++					$$ = (Node *) makeSimpleA_Expr(AEXPR_DISTINCT, "=", $1, $5, @2.start);
+ 				}
+ 			| b_expr IS NOT DISTINCT FROM b_expr	%prec IS
+ 				{
+-					$$ = (Node *) makeSimpleA_Expr(AEXPR_NOT_DISTINCT, "=", $1, $6, @2);
++					$$ = (Node *) makeSimpleA_Expr(AEXPR_NOT_DISTINCT, "=", $1, $6, @2.start);
+ 				}
+ 			| b_expr IS DOCUMENT_P					%prec IS
+ 				{
+ 					$$ = makeXmlExpr(IS_DOCUMENT, NULL, NIL,
+-									 list_make1($1), @2);
++									 list_make1($1), @2.start);
+ 				}
+ 			| b_expr IS NOT DOCUMENT_P				%prec IS
+ 				{
+ 					$$ = makeNotExpr(makeXmlExpr(IS_DOCUMENT, NULL, NIL,
+-												 list_make1($1), @2),
+-									 @2);
++												 list_make1($1), @2.start),
++									 @2.start);
+ 				}
+ 		;
+ 
+@@ -15407,7 +15427,7 @@
+ 					ParamRef   *p = makeNode(ParamRef);
+ 
+ 					p->number = $1;
+-					p->location = @1;
++					p->location = @1.start;
+ 					if ($2)
+ 					{
+ 						A_Indirection *n = makeNode(A_Indirection);
+@@ -15445,7 +15465,7 @@
+ 					n->testexpr = NULL;
+ 					n->operName = NIL;
+ 					n->subselect = $1;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| select_with_parens indirection
+@@ -15468,7 +15488,7 @@
+ 					n->testexpr = NULL;
+ 					n->operName = NIL;
+ 					n->subselect = $1;
+-					n->location = @1;
++					n->location = @1.start;
+ 					a->arg = (Node *) n;
+ 					a->indirection = check_indirection($2, yyscanner);
+ 					$$ = (Node *) a;
+@@ -15482,7 +15502,7 @@
+ 					n->testexpr = NULL;
+ 					n->operName = NIL;
+ 					n->subselect = $2;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| ARRAY select_with_parens
+@@ -15494,7 +15514,7 @@
+ 					n->testexpr = NULL;
+ 					n->operName = NIL;
+ 					n->subselect = $2;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| ARRAY array_expr
+@@ -15502,7 +15522,7 @@
+ 					A_ArrayExpr *n = castNode(A_ArrayExpr, $2);
+ 
+ 					/* point outermost A_ArrayExpr to the ARRAY keyword */
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| explicit_row
+@@ -15513,7 +15533,7 @@
+ 					r->row_typeid = InvalidOid;	/* not analyzed yet */
+ 					r->colnames = NIL;	/* to be filled in during analysis */
+ 					r->row_format = COERCE_EXPLICIT_CALL; /* abuse */
+-					r->location = @1;
++					r->location = @1.start;
+ 					$$ = (Node *) r;
+ 				}
+ 			| implicit_row
+@@ -15524,7 +15544,7 @@
+ 					r->row_typeid = InvalidOid;	/* not analyzed yet */
+ 					r->colnames = NIL;	/* to be filled in during analysis */
+ 					r->row_format = COERCE_IMPLICIT_CAST; /* abuse */
+-					r->location = @1;
++					r->location = @1.start;
+ 					$$ = (Node *) r;
+ 				}
+ 			| GROUPING '(' expr_list ')'
+@@ -15532,31 +15552,31 @@
+ 				  GroupingFunc *g = makeNode(GroupingFunc);
+ 
+ 				  g->args = $3;
+-				  g->location = @1;
++				  g->location = @1.start;
+ 				  $$ = (Node *) g;
+ 			  }
+ 		;
+ 
+ func_application: func_name '(' ')'
+ 				{
+-					$$ = (Node *) makeFuncCall($1, NIL,
++					$$ = (Node *) fcExtent(makeFuncCall($1, NIL,
+ 											   COERCE_EXPLICIT_CALL,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| func_name '(' func_arg_list opt_sort_clause ')'
+ 				{
+-					FuncCall   *n = makeFuncCall($1, $3,
++					FuncCall   *n = fcExtent(makeFuncCall($1, $3,
+ 												 COERCE_EXPLICIT_CALL,
+-												 @1);
++												 @1.start), @$);
+ 
+ 					n->agg_order = $4;
+ 					$$ = (Node *) n;
+ 				}
+ 			| func_name '(' VARIADIC func_arg_expr opt_sort_clause ')'
+ 				{
+-					FuncCall   *n = makeFuncCall($1, list_make1($4),
++					FuncCall   *n = fcExtent(makeFuncCall($1, list_make1($4),
+ 												 COERCE_EXPLICIT_CALL,
+-												 @1);
++												 @1.start), @$);
+ 
+ 					n->func_variadic = true;
+ 					n->agg_order = $5;
+@@ -15564,9 +15584,9 @@
+ 				}
+ 			| func_name '(' func_arg_list ',' VARIADIC func_arg_expr opt_sort_clause ')'
+ 				{
+-					FuncCall   *n = makeFuncCall($1, lappend($3, $6),
++					FuncCall   *n = fcExtent(makeFuncCall($1, lappend($3, $6),
+ 												 COERCE_EXPLICIT_CALL,
+-												 @1);
++												 @1.start), @$);
+ 
+ 					n->func_variadic = true;
+ 					n->agg_order = $7;
+@@ -15574,9 +15594,9 @@
+ 				}
+ 			| func_name '(' ALL func_arg_list opt_sort_clause ')'
+ 				{
+-					FuncCall   *n = makeFuncCall($1, $4,
++					FuncCall   *n = fcExtent(makeFuncCall($1, $4,
+ 												 COERCE_EXPLICIT_CALL,
+-												 @1);
++												 @1.start), @$);
+ 
+ 					n->agg_order = $5;
+ 					/* Ideally we'd mark the FuncCall node to indicate
+@@ -15587,9 +15607,9 @@
+ 				}
+ 			| func_name '(' DISTINCT func_arg_list opt_sort_clause ')'
+ 				{
+-					FuncCall   *n = makeFuncCall($1, $4,
++					FuncCall   *n = fcExtent(makeFuncCall($1, $4,
+ 												 COERCE_EXPLICIT_CALL,
+-												 @1);
++												 @1.start), @$);
+ 
+ 					n->agg_order = $5;
+ 					n->agg_distinct = true;
+@@ -15607,9 +15627,9 @@
+ 					 * so that later processing can detect what the argument
+ 					 * really was.
+ 					 */
+-					FuncCall   *n = makeFuncCall($1, NIL,
++					FuncCall   *n = fcExtent(makeFuncCall($1, NIL,
+ 												 COERCE_EXPLICIT_CALL,
+-												 @1);
++												 @1.start), @$);
+ 
+ 					n->agg_star = true;
+ 					$$ = (Node *) n;
+@@ -15644,17 +15664,17 @@
+ 							ereport(ERROR,
+ 									(errcode(ERRCODE_SYNTAX_ERROR),
+ 									 errmsg("cannot use multiple ORDER BY clauses with WITHIN GROUP"),
+-									 parser_errposition(@2)));
++									 parser_errposition(@2.start)));
+ 						if (n->agg_distinct)
+ 							ereport(ERROR,
+ 									(errcode(ERRCODE_SYNTAX_ERROR),
+ 									 errmsg("cannot use DISTINCT with WITHIN GROUP"),
+-									 parser_errposition(@2)));
++									 parser_errposition(@2.start)));
+ 						if (n->func_variadic)
+ 							ereport(ERROR,
+ 									(errcode(ERRCODE_SYNTAX_ERROR),
+ 									 errmsg("cannot use VARIADIC with WITHIN GROUP"),
+-									 parser_errposition(@2)));
++									 parser_errposition(@2.start)));
+ 						n->agg_order = $2;
+ 						n->agg_within_group = true;
+ 					}
+@@ -15694,107 +15714,107 @@
+ func_expr_common_subexpr:
+ 			COLLATION FOR '(' a_expr ')'
+ 				{
+-					$$ = (Node *) makeFuncCall(SystemFuncName("pg_collation_for"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("pg_collation_for"),
+ 											   list_make1($4),
+ 											   COERCE_SQL_SYNTAX,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| CURRENT_DATE
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_CURRENT_DATE, -1, @1);
++					$$ = makeSQLValueFunction(SVFOP_CURRENT_DATE, -1, @1.start);
+ 				}
+ 			| CURRENT_TIME
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_CURRENT_TIME, -1, @1);
++					$$ = makeSQLValueFunction(SVFOP_CURRENT_TIME, -1, @1.start);
+ 				}
+ 			| CURRENT_TIME '(' Iconst ')'
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_CURRENT_TIME_N, $3, @1);
++					$$ = makeSQLValueFunction(SVFOP_CURRENT_TIME_N, $3, @1.start);
+ 				}
+ 			| CURRENT_TIMESTAMP
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_CURRENT_TIMESTAMP, -1, @1);
++					$$ = makeSQLValueFunction(SVFOP_CURRENT_TIMESTAMP, -1, @1.start);
+ 				}
+ 			| CURRENT_TIMESTAMP '(' Iconst ')'
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_CURRENT_TIMESTAMP_N, $3, @1);
++					$$ = makeSQLValueFunction(SVFOP_CURRENT_TIMESTAMP_N, $3, @1.start);
+ 				}
+ 			| LOCALTIME
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_LOCALTIME, -1, @1);
++					$$ = makeSQLValueFunction(SVFOP_LOCALTIME, -1, @1.start);
+ 				}
+ 			| LOCALTIME '(' Iconst ')'
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_LOCALTIME_N, $3, @1);
++					$$ = makeSQLValueFunction(SVFOP_LOCALTIME_N, $3, @1.start);
+ 				}
+ 			| LOCALTIMESTAMP
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_LOCALTIMESTAMP, -1, @1);
++					$$ = makeSQLValueFunction(SVFOP_LOCALTIMESTAMP, -1, @1.start);
+ 				}
+ 			| LOCALTIMESTAMP '(' Iconst ')'
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_LOCALTIMESTAMP_N, $3, @1);
++					$$ = makeSQLValueFunction(SVFOP_LOCALTIMESTAMP_N, $3, @1.start);
+ 				}
+ 			| CURRENT_ROLE
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_CURRENT_ROLE, -1, @1);
++					$$ = makeSQLValueFunction(SVFOP_CURRENT_ROLE, -1, @1.start);
+ 				}
+ 			| CURRENT_USER
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_CURRENT_USER, -1, @1);
++					$$ = makeSQLValueFunction(SVFOP_CURRENT_USER, -1, @1.start);
+ 				}
+ 			| SESSION_USER
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_SESSION_USER, -1, @1);
++					$$ = makeSQLValueFunction(SVFOP_SESSION_USER, -1, @1.start);
+ 				}
+ 			| SYSTEM_USER
+ 				{
+-					$$ = (Node *) makeFuncCall(SystemFuncName("system_user"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("system_user"),
+ 											   NIL,
+ 											   COERCE_SQL_SYNTAX,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| USER
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_USER, -1, @1);
++					$$ = makeSQLValueFunction(SVFOP_USER, -1, @1.start);
+ 				}
+ 			| CURRENT_CATALOG
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_CURRENT_CATALOG, -1, @1);
++					$$ = makeSQLValueFunction(SVFOP_CURRENT_CATALOG, -1, @1.start);
+ 				}
+ 			| CURRENT_SCHEMA
+ 				{
+-					$$ = makeSQLValueFunction(SVFOP_CURRENT_SCHEMA, -1, @1);
++					$$ = makeSQLValueFunction(SVFOP_CURRENT_SCHEMA, -1, @1.start);
+ 				}
+ 			| CAST '(' a_expr AS Typename ')'
+-				{ $$ = makeTypeCast($3, $5, @1); }
++				{ $$ = makeTypeCast($3, $5, @1.start); }
+ 			| EXTRACT '(' extract_list ')'
+ 				{
+-					$$ = (Node *) makeFuncCall(SystemFuncName("extract"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("extract"),
+ 											   $3,
+ 											   COERCE_SQL_SYNTAX,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| NORMALIZE '(' a_expr ')'
+ 				{
+-					$$ = (Node *) makeFuncCall(SystemFuncName("normalize"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("normalize"),
+ 											   list_make1($3),
+ 											   COERCE_SQL_SYNTAX,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| NORMALIZE '(' a_expr ',' unicode_normal_form ')'
+ 				{
+-					$$ = (Node *) makeFuncCall(SystemFuncName("normalize"),
+-											   list_make2($3, makeStringConst($5, @5)),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("normalize"),
++											   list_make2($3, makeStringConst($5, @5.start)),
+ 											   COERCE_SQL_SYNTAX,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| OVERLAY '(' overlay_list ')'
+ 				{
+-					$$ = (Node *) makeFuncCall(SystemFuncName("overlay"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("overlay"),
+ 											   $3,
+ 											   COERCE_SQL_SYNTAX,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| OVERLAY '(' func_arg_list_opt ')'
+ 				{
+@@ -15802,10 +15822,10 @@
+ 					 * allow functions named overlay() to be called without
+ 					 * special syntax
+ 					 */
+-					$$ = (Node *) makeFuncCall(list_make1(makeString("overlay")),
++					$$ = (Node *) fcExtent(makeFuncCall(list_make1(makeString("overlay")),
+ 											   $3,
+ 											   COERCE_EXPLICIT_CALL,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| POSITION '(' position_list ')'
+ 				{
+@@ -15816,20 +15836,20 @@
+ 					 * for position(), because the reversal of the arguments
+ 					 * creates too much risk of confusion.
+ 					 */
+-					$$ = (Node *) makeFuncCall(SystemFuncName("position"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("position"),
+ 											   $3,
+ 											   COERCE_SQL_SYNTAX,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| SUBSTRING '(' substr_list ')'
+ 				{
+ 					/* substring(A from B for C) is converted to
+ 					 * substring(A, B, C) - thomas 2000-11-28
+ 					 */
+-					$$ = (Node *) makeFuncCall(SystemFuncName("substring"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("substring"),
+ 											   $3,
+ 											   COERCE_SQL_SYNTAX,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| SUBSTRING '(' func_arg_list_opt ')'
+ 				{
+@@ -15837,10 +15857,10 @@
+ 					 * allow functions named substring() to be called without
+ 					 * special syntax
+ 					 */
+-					$$ = (Node *) makeFuncCall(list_make1(makeString("substring")),
++					$$ = (Node *) fcExtent(makeFuncCall(list_make1(makeString("substring")),
+ 											   $3,
+ 											   COERCE_EXPLICIT_CALL,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| TREAT '(' a_expr AS Typename ')'
+ 				{
+@@ -15853,52 +15873,52 @@
+ 					 * Convert SystemTypeName() to SystemFuncName() even though
+ 					 * at the moment they result in the same thing.
+ 					 */
+-					$$ = (Node *) makeFuncCall(SystemFuncName(strVal(llast($5->names))),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName(strVal(llast($5->names))),
+ 											   list_make1($3),
+ 											   COERCE_EXPLICIT_CALL,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| TRIM '(' BOTH trim_list ')'
+ 				{
+ 					/* various trim expressions are defined in SQL
+ 					 * - thomas 1997-07-19
+ 					 */
+-					$$ = (Node *) makeFuncCall(SystemFuncName("btrim"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("btrim"),
+ 											   $4,
+ 											   COERCE_SQL_SYNTAX,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| TRIM '(' LEADING trim_list ')'
+ 				{
+-					$$ = (Node *) makeFuncCall(SystemFuncName("ltrim"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("ltrim"),
+ 											   $4,
+ 											   COERCE_SQL_SYNTAX,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| TRIM '(' TRAILING trim_list ')'
+ 				{
+-					$$ = (Node *) makeFuncCall(SystemFuncName("rtrim"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("rtrim"),
+ 											   $4,
+ 											   COERCE_SQL_SYNTAX,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| TRIM '(' trim_list ')'
+ 				{
+-					$$ = (Node *) makeFuncCall(SystemFuncName("btrim"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("btrim"),
+ 											   $3,
+ 											   COERCE_SQL_SYNTAX,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| NULLIF '(' a_expr ',' a_expr ')'
+ 				{
+-					$$ = (Node *) makeSimpleA_Expr(AEXPR_NULLIF, "=", $3, $5, @1);
++					$$ = (Node *) makeSimpleA_Expr(AEXPR_NULLIF, "=", $3, $5, @1.start);
+ 				}
+ 			| COALESCE '(' expr_list ')'
+ 				{
+ 					CoalesceExpr *c = makeNode(CoalesceExpr);
+ 
+ 					c->args = $3;
+-					c->location = @1;
++					c->location = @1.start;
+ 					$$ = (Node *) c;
+ 				}
+ 			| GREATEST '(' expr_list ')'
+@@ -15907,7 +15927,7 @@
+ 
+ 					v->args = $3;
+ 					v->op = IS_GREATEST;
+-					v->location = @1;
++					v->location = @1.start;
+ 					$$ = (Node *) v;
+ 				}
+ 			| LEAST '(' expr_list ')'
+@@ -15916,64 +15936,64 @@
+ 
+ 					v->args = $3;
+ 					v->op = IS_LEAST;
+-					v->location = @1;
++					v->location = @1.start;
+ 					$$ = (Node *) v;
+ 				}
+ 			| XMLCONCAT '(' expr_list ')'
+ 				{
+-					$$ = makeXmlExpr(IS_XMLCONCAT, NULL, NIL, $3, @1);
++					$$ = makeXmlExpr(IS_XMLCONCAT, NULL, NIL, $3, @1.start);
+ 				}
+ 			| XMLELEMENT '(' NAME_P ColLabel ')'
+ 				{
+-					$$ = makeXmlExpr(IS_XMLELEMENT, $4, NIL, NIL, @1);
++					$$ = makeXmlExpr(IS_XMLELEMENT, $4, NIL, NIL, @1.start);
+ 				}
+ 			| XMLELEMENT '(' NAME_P ColLabel ',' xml_attributes ')'
+ 				{
+-					$$ = makeXmlExpr(IS_XMLELEMENT, $4, $6, NIL, @1);
++					$$ = makeXmlExpr(IS_XMLELEMENT, $4, $6, NIL, @1.start);
+ 				}
+ 			| XMLELEMENT '(' NAME_P ColLabel ',' expr_list ')'
+ 				{
+-					$$ = makeXmlExpr(IS_XMLELEMENT, $4, NIL, $6, @1);
++					$$ = makeXmlExpr(IS_XMLELEMENT, $4, NIL, $6, @1.start);
+ 				}
+ 			| XMLELEMENT '(' NAME_P ColLabel ',' xml_attributes ',' expr_list ')'
+ 				{
+-					$$ = makeXmlExpr(IS_XMLELEMENT, $4, $6, $8, @1);
++					$$ = makeXmlExpr(IS_XMLELEMENT, $4, $6, $8, @1.start);
+ 				}
+ 			| XMLEXISTS '(' c_expr xmlexists_argument ')'
+ 				{
+ 					/* xmlexists(A PASSING [BY REF] B [BY REF]) is
+ 					 * converted to xmlexists(A, B)*/
+-					$$ = (Node *) makeFuncCall(SystemFuncName("xmlexists"),
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("xmlexists"),
+ 											   list_make2($3, $4),
+ 											   COERCE_SQL_SYNTAX,
+-											   @1);
++											   @1.start), @$);
+ 				}
+ 			| XMLFOREST '(' xml_attribute_list ')'
+ 				{
+-					$$ = makeXmlExpr(IS_XMLFOREST, NULL, $3, NIL, @1);
++					$$ = makeXmlExpr(IS_XMLFOREST, NULL, $3, NIL, @1.start);
+ 				}
+ 			| XMLPARSE '(' document_or_content a_expr xml_whitespace_option ')'
+ 				{
+ 					XmlExpr *x = (XmlExpr *)
+ 						makeXmlExpr(IS_XMLPARSE, NULL, NIL,
+ 									list_make2($4, makeBoolAConst($5, -1)),
+-									@1);
++									@1.start);
+ 
+ 					x->xmloption = $3;
+ 					$$ = (Node *) x;
+ 				}
+ 			| XMLPI '(' NAME_P ColLabel ')'
+ 				{
+-					$$ = makeXmlExpr(IS_XMLPI, $4, NULL, NIL, @1);
++					$$ = makeXmlExpr(IS_XMLPI, $4, NULL, NIL, @1.start);
+ 				}
+ 			| XMLPI '(' NAME_P ColLabel ',' a_expr ')'
+ 				{
+-					$$ = makeXmlExpr(IS_XMLPI, $4, NULL, list_make1($6), @1);
++					$$ = makeXmlExpr(IS_XMLPI, $4, NULL, list_make1($6), @1.start);
+ 				}
+ 			| XMLROOT '(' a_expr ',' xml_root_version opt_xml_root_standalone ')'
+ 				{
+ 					$$ = makeXmlExpr(IS_XMLROOT, NULL, NIL,
+-									 list_make3($3, $5, $6), @1);
++									 list_make3($3, $5, $6), @1.start);
+ 				}
+ 			| XMLSERIALIZE '(' document_or_content a_expr AS SimpleTypename xml_indent_option ')'
+ 				{
+@@ -15983,14 +16003,14 @@
+ 					n->expr = $4;
+ 					n->typeName = $6;
+ 					n->indent = $7;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| JSON_OBJECT '(' func_arg_list ')'
+ 				{
+ 					/* Support for legacy (non-standard) json_object() */
+-					$$ = (Node *) makeFuncCall(SystemFuncName("json_object"),
+-											   $3, COERCE_EXPLICIT_CALL, @1);
++					$$ = (Node *) fcExtent(makeFuncCall(SystemFuncName("json_object"),
++											   $3, COERCE_EXPLICIT_CALL, @1.start), @$);
+ 				}
+ 			| JSON_OBJECT '(' json_name_and_value_list
+ 				json_object_constructor_null_clause_opt
+@@ -16003,7 +16023,7 @@
+ 					n->absent_on_null = $4;
+ 					n->unique = $5;
+ 					n->output = (JsonOutput *) $6;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| JSON_OBJECT '(' json_returning_clause_opt ')'
+@@ -16014,7 +16034,7 @@
+ 					n->absent_on_null = false;
+ 					n->unique = false;
+ 					n->output = (JsonOutput *) $3;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| JSON_ARRAY '('
+@@ -16028,7 +16048,7 @@
+ 					n->exprs = $3;
+ 					n->absent_on_null = $4;
+ 					n->output = (JsonOutput *) $5;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| JSON_ARRAY '('
+@@ -16044,7 +16064,7 @@
+ 					n->format = (JsonFormat *) $4;
+ 					n->absent_on_null = true;	/* XXX */
+ 					n->output = (JsonOutput *) $5;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| JSON_ARRAY '('
+@@ -16056,7 +16076,7 @@
+ 					n->exprs = NIL;
+ 					n->absent_on_null = true;
+ 					n->output = (JsonOutput *) $3;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| JSON '(' json_value_expr json_key_uniqueness_constraint_opt ')'
+@@ -16066,7 +16086,7 @@
+ 					n->expr = (JsonValueExpr *) $3;
+ 					n->unique_keys = $4;
+ 					n->output = NULL;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| JSON_SCALAR '(' a_expr ')'
+@@ -16075,7 +16095,7 @@
+ 
+ 					n->expr = (Expr *) $3;
+ 					n->output = NULL;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| JSON_SERIALIZE '(' json_value_expr json_returning_clause_opt ')'
+@@ -16084,7 +16104,7 @@
+ 
+ 					n->expr = (JsonValueExpr *) $3;
+ 					n->output = (JsonOutput *) $4;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| MERGE_ACTION '(' ')'
+@@ -16092,7 +16112,7 @@
+ 					MergeSupportFunc *m = makeNode(MergeSupportFunc);
+ 
+ 					m->msftype = TEXTOID;
+-					m->location = @1;
++					m->location = @1.start;
+ 					$$ = (Node *) m;
+ 				}
+ 			| JSON_QUERY '('
+@@ -16114,7 +16134,7 @@
+ 					n->quotes = $9;
+ 					n->on_empty = (JsonBehavior *) linitial($10);
+ 					n->on_error = (JsonBehavior *) lsecond($10);
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| JSON_EXISTS '('
+@@ -16130,7 +16150,7 @@
+ 					n->passing = $6;
+ 					n->output = NULL;
+ 					n->on_error = (JsonBehavior *) $7;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| JSON_VALUE '('
+@@ -16148,7 +16168,7 @@
+ 					n->output = (JsonOutput *) $7;
+ 					n->on_empty = (JsonBehavior *) linitial($8);
+ 					n->on_error = (JsonBehavior *) lsecond($8);
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			;
+@@ -16186,7 +16206,7 @@
+ 					$$->name = $3;
+ 					$$->indirection = NIL;
+ 					$$->val = (Node *) $1;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| a_expr
+ 				{
+@@ -16194,7 +16214,7 @@
+ 					$$->name = NULL;
+ 					$$->indirection = NIL;
+ 					$$->val = (Node *) $1;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 		;
+ 
+@@ -16289,7 +16309,7 @@
+ 					n->frameOptions = FRAMEOPTION_DEFAULTS;
+ 					n->startOffset = NULL;
+ 					n->endOffset = NULL;
+-					n->location = @2;
++					n->location = @2.start;
+ 					$$ = n;
+ 				}
+ 			| /*EMPTY*/
+@@ -16309,7 +16329,7 @@
+ 					n->frameOptions = $5->frameOptions;
+ 					n->startOffset = $5->startOffset;
+ 					n->endOffset = $5->endOffset;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = n;
+ 				}
+ 		;
+@@ -16381,12 +16401,12 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_WINDOWING_ERROR),
+ 								 errmsg("frame start cannot be UNBOUNDED FOLLOWING"),
+-								 parser_errposition(@1)));
++								 parser_errposition(@1.start)));
+ 					if (n->frameOptions & FRAMEOPTION_START_OFFSET_FOLLOWING)
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_WINDOWING_ERROR),
+ 								 errmsg("frame starting from following row cannot end with current row"),
+-								 parser_errposition(@1)));
++								 parser_errposition(@1.start)));
+ 					n->frameOptions |= FRAMEOPTION_END_CURRENT_ROW;
+ 					$$ = n;
+ 				}
+@@ -16405,25 +16425,25 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_WINDOWING_ERROR),
+ 								 errmsg("frame start cannot be UNBOUNDED FOLLOWING"),
+-								 parser_errposition(@2)));
++								 parser_errposition(@2.start)));
+ 					if (frameOptions & FRAMEOPTION_END_UNBOUNDED_PRECEDING)
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_WINDOWING_ERROR),
+ 								 errmsg("frame end cannot be UNBOUNDED PRECEDING"),
+-								 parser_errposition(@4)));
++								 parser_errposition(@4.start)));
+ 					if ((frameOptions & FRAMEOPTION_START_CURRENT_ROW) &&
+ 						(frameOptions & FRAMEOPTION_END_OFFSET_PRECEDING))
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_WINDOWING_ERROR),
+ 								 errmsg("frame starting from current row cannot have preceding rows"),
+-								 parser_errposition(@4)));
++								 parser_errposition(@4.start)));
+ 					if ((frameOptions & FRAMEOPTION_START_OFFSET_FOLLOWING) &&
+ 						(frameOptions & (FRAMEOPTION_END_OFFSET_PRECEDING |
+ 										 FRAMEOPTION_END_CURRENT_ROW)))
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_WINDOWING_ERROR),
+ 								 errmsg("frame starting from following row cannot have preceding rows"),
+-								 parser_errposition(@4)));
++								 parser_errposition(@4.start)));
+ 					n1->frameOptions = frameOptions;
+ 					n1->endOffset = n2->startOffset;
+ 					$$ = n1;
+@@ -16605,7 +16625,7 @@
+ 					na->name = $1;
+ 					na->arg = (Expr *) $3;
+ 					na->argnumber = -1;		/* until determined */
+-					na->location = @1;
++					na->location = @1.start;
+ 					$$ = (Node *) na;
+ 				}
+ 			| param_name EQUALS_GREATER a_expr
+@@ -16615,7 +16635,7 @@
+ 					na->name = $1;
+ 					na->arg = (Expr *) $3;
+ 					na->argnumber = -1;		/* until determined */
+-					na->location = @1;
++					na->location = @1.start;
+ 					$$ = (Node *) na;
+ 				}
+ 		;
+@@ -16630,15 +16650,15 @@
+ 
+ array_expr: '[' expr_list ']'
+ 				{
+-					$$ = makeAArrayExpr($2, @1);
++					$$ = makeAArrayExpr($2, @1.start);
+ 				}
+ 			| '[' array_expr_list ']'
+ 				{
+-					$$ = makeAArrayExpr($2, @1);
++					$$ = makeAArrayExpr($2, @1.start);
+ 				}
+ 			| '[' ']'
+ 				{
+-					$$ = makeAArrayExpr(NIL, @1);
++					$$ = makeAArrayExpr(NIL, @1.start);
+ 				}
+ 		;
+ 
+@@ -16650,11 +16670,11 @@
+ extract_list:
+ 			extract_arg FROM a_expr
+ 				{
+-					$$ = list_make2(makeStringConst($1, @1), $3);
++					$$ = list_make2(makeStringConst($1, @1.start), $3);
+ 				}
+ 			| PARAM FROM a_expr
+ 				{
+-					$$ = list_make2(makeParamRef($1, @1), $3);
++					$$ = list_make2(makeParamRef($1, @1.start), $3);
+ 				}
+ 		;
+ 
+@@ -16790,7 +16810,7 @@
+ 					c->arg = (Expr *) $2;
+ 					c->args = $3;
+ 					c->defresult = (Expr *) $4;
+-					c->location = @1;
++					c->location = @1.start;
+ 					$$ = (Node *) c;
+ 				}
+ 		;
+@@ -16808,7 +16828,7 @@
+ 
+ 					w->expr = (Expr *) $2;
+ 					w->result = (Expr *) $4;
+-					w->location = @1;
++					w->location = @1.start;
+ 					$$ = (Node *) w;
+ 				}
+ 		;
+@@ -16824,11 +16844,11 @@
+ 
+ columnref:	ColId
+ 				{
+-					$$ = makeColumnRef($1, NIL, @1, yyscanner);
++					$$ = nodeExtent(makeColumnRef($1, NIL, @1.start, yyscanner), @$);
+ 				}
+ 			| ColId indirection
+ 				{
+-					$$ = makeColumnRef($1, $2, @1, yyscanner);
++					$$ = nodeExtent(makeColumnRef($1, $2, @1.start, yyscanner), @$);
+ 				}
+ 		;
+ 
+@@ -16917,9 +16937,9 @@
+ 
+ json_behavior:
+ 			DEFAULT a_expr
+-				{ $$ = (Node *) makeJsonBehavior(JSON_BEHAVIOR_DEFAULT, $2, @1); }
++				{ $$ = (Node *) makeJsonBehavior(JSON_BEHAVIOR_DEFAULT, $2, @1.start); }
+ 			| json_behavior_type
+-				{ $$ = (Node *) makeJsonBehavior($1, NULL, @1); }
++				{ $$ = (Node *) makeJsonBehavior($1, NULL, @1.start); }
+ 		;
+ 
+ json_behavior_type:
+@@ -16977,11 +16997,11 @@
+ 								errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+ 								errmsg("unrecognized JSON encoding: %s", $4));
+ 
+-					$$ = (Node *) makeJsonFormat(JS_FORMAT_JSON, encoding, @1);
++					$$ = (Node *) makeJsonFormat(JS_FORMAT_JSON, encoding, @1.start);
+ 				}
+ 			| FORMAT_LA JSON
+ 				{
+-					$$ = (Node *) makeJsonFormat(JS_FORMAT_JSON, JS_ENC_DEFAULT, @1);
++					$$ = (Node *) makeJsonFormat(JS_FORMAT_JSON, JS_ENC_DEFAULT, @1.start);
+ 				}
+ 		;
+ 
+@@ -17102,7 +17122,7 @@
+ 					n->constructor = makeNode(JsonAggConstructor);
+ 					n->constructor->output = (JsonOutput *) $6;
+ 					n->constructor->agg_order = NULL;
+-					n->constructor->location = @1;
++					n->constructor->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 			| JSON_ARRAYAGG '('
+@@ -17119,7 +17139,7 @@
+ 					n->constructor = makeNode(JsonAggConstructor);
+ 					n->constructor->agg_order = $4;
+ 					n->constructor->output = (JsonOutput *) $6;
+-					n->constructor->location = @1;
++					n->constructor->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -17150,7 +17170,7 @@
+ 					$$->name = $3;
+ 					$$->indirection = NIL;
+ 					$$->val = (Node *) $1;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| a_expr BareColLabel
+ 				{
+@@ -17158,7 +17178,7 @@
+ 					$$->name = $2;
+ 					$$->indirection = NIL;
+ 					$$->val = (Node *) $1;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| a_expr
+ 				{
+@@ -17166,20 +17186,20 @@
+ 					$$->name = NULL;
+ 					$$->indirection = NIL;
+ 					$$->val = (Node *) $1;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 			| '*'
+ 				{
+ 					ColumnRef  *n = makeNode(ColumnRef);
+ 
+ 					n->fields = list_make1(makeNode(A_Star));
+-					n->location = @1;
++					n->location = @1.start;
+ 
+ 					$$ = makeNode(ResTarget);
+ 					$$->name = NULL;
+ 					$$->indirection = NIL;
+ 					$$->val = (Node *) n;
+-					$$->location = @1;
++					$$->location = @1.start;
+ 				}
+ 		;
+ 
+@@ -17205,11 +17225,11 @@
+ qualified_name:
+ 			ColId
+ 				{
+-					$$ = makeRangeVar(NULL, $1, @1);
++					$$ = rvExtent(makeRangeVar(NULL, $1, @1.start), @$);
+ 				}
+ 			| ColId indirection
+ 				{
+-					$$ = makeRangeVarFromQualifiedName($1, $2, @1, yyscanner);
++					$$ = rvExtent(makeRangeVarFromQualifiedName($1, $2, @1.start, yyscanner), @$);
+ 				}
+ 		;
+ 
+@@ -17249,19 +17269,19 @@
+  */
+ AexprConst: Iconst
+ 				{
+-					$$ = makeIntConst($1, @1);
++					$$ = makeIntConst($1, @1.start);
+ 				}
+ 			| FCONST
+ 				{
+-					$$ = makeFloatConst($1, @1);
++					$$ = makeFloatConst($1, @1.start);
+ 				}
+ 			| Sconst
+ 				{
+-					$$ = makeStringConst($1, @1);
++					$$ = makeStringConst($1, @1.start);
+ 				}
+ 			| BCONST
+ 				{
+-					$$ = makeBitStringConst($1, @1);
++					$$ = makeBitStringConst($1, @1.start);
+ 				}
+ 			| XCONST
+ 				{
+@@ -17270,15 +17290,15 @@
+ 					 * a <general literal> shall not be a
+ 					 * <bit string literal> or a <hex string literal>.
+ 					 */
+-					$$ = makeBitStringConst($1, @1);
++					$$ = makeBitStringConst($1, @1.start);
+ 				}
+ 			| func_name Sconst
+ 				{
+ 					/* generic type 'literal' syntax */
+ 					TypeName   *t = makeTypeNameFromNameList($1);
+ 
+-					t->location = @1;
+-					$$ = makeStringConstCast($2, @2, t);
++					t->location = @1.start;
++					$$ = makeStringConstCast($2, @2.start, t);
+ 				}
+ 			| func_name '(' func_arg_list opt_sort_clause ')' Sconst
+ 				{
+@@ -17306,18 +17326,18 @@
+ 							ereport(ERROR,
+ 									(errcode(ERRCODE_SYNTAX_ERROR),
+ 									 errmsg("type modifier cannot have ORDER BY"),
+-									 parser_errposition(@4)));
++									 parser_errposition(@4.start)));
+ 
+ 					t->typmods = $3;
+-					t->location = @1;
+-					$$ = makeStringConstCast($6, @6, t);
++					t->location = @1.start;
++					$$ = makeStringConstCast($6, @6.start, t);
+ 				}
+ 			| func_name PARAM
+ 				{
+ 					/* generic type 'literal' syntax */
+ 					TypeName *t = makeTypeNameFromNameList($1);
+-					t->location = @1;
+-					$$ = makeParamRefCast($2, @2, t);
++					t->location = @1.start;
++					$$ = makeParamRefCast($2, @2.start, t);
+ 				}
+ 			| func_name '(' func_arg_list opt_sort_clause ')' PARAM
+ 				{
+@@ -17345,59 +17365,59 @@
+ 							ereport(ERROR,
+ 									(errcode(ERRCODE_SYNTAX_ERROR),
+ 									 errmsg("type modifier cannot have ORDER BY"),
+-									 parser_errposition(@4)));
++									 parser_errposition(@4.start)));
+ 
+ 					t->typmods = $3;
+-					t->location = @1;
+-					$$ = makeParamRefCast($6, @6, t);
++					t->location = @1.start;
++					$$ = makeParamRefCast($6, @6.start, t);
+ 				}
+ 			| ConstTypename Sconst
+ 				{
+-					$$ = makeStringConstCast($2, @2, $1);
++					$$ = makeStringConstCast($2, @2.start, $1);
+ 				}
+ 			| ConstInterval Sconst opt_interval
+ 				{
+ 					TypeName   *t = $1;
+ 
+ 					t->typmods = $3;
+-					$$ = makeStringConstCast($2, @2, t);
++					$$ = makeStringConstCast($2, @2.start, t);
+ 				}
+ 			| ConstInterval '(' Iconst ')' Sconst
+ 				{
+ 					TypeName   *t = $1;
+ 
+ 					t->typmods = list_make2(makeIntConst(INTERVAL_FULL_RANGE, -1),
+-											makeIntConst($3, @3));
+-					$$ = makeStringConstCast($5, @5, t);
++											makeIntConst($3, @3.start));
++					$$ = makeStringConstCast($5, @5.start, t);
+ 				}
+ 			| ConstTypename PARAM
+ 				{
+-					$$ = makeParamRefCast($2, @2, $1);
++					$$ = makeParamRefCast($2, @2.start, $1);
+ 				}
+ 			| ConstInterval PARAM opt_interval
+ 				{
+ 					TypeName *t = $1;
+ 					t->typmods = $3;
+-					$$ = makeParamRefCast($2, @2, t);
++					$$ = makeParamRefCast($2, @2.start, t);
+ 				}
+ 			| ConstInterval '(' Iconst ')' PARAM
+ 				{
+ 					TypeName *t = $1;
+ 					t->typmods = list_make2(makeIntConst(INTERVAL_FULL_RANGE, -1),
+-											makeIntConst($3, @3));
+-					$$ = makeParamRefCast($5, @5, t);
++											makeIntConst($3, @3.start));
++					$$ = makeParamRefCast($5, @5.start, t);
+ 				}
+ 			| TRUE_P
+ 				{
+-					$$ = makeBoolAConst(true, @1);
++					$$ = makeBoolAConst(true, @1.start);
+ 				}
+ 			| FALSE_P
+ 				{
+-					$$ = makeBoolAConst(false, @1);
++					$$ = makeBoolAConst(false, @1.start);
+ 				}
+ 			| NULL_P
+ 				{
+-					$$ = makeNullAConst(@1);
++					$$ = makeNullAConst(@1.start);
+ 				}
+ 		;
+ 
+@@ -17424,28 +17444,28 @@
+ 									(errcode(ERRCODE_RESERVED_NAME),
+ 									 errmsg("role name \"%s\" is reserved",
+ 											"public"),
+-									 parser_errposition(@1)));
++									 parser_errposition(@1.start)));
+ 							break;
+ 						case ROLESPEC_SESSION_USER:
+ 							ereport(ERROR,
+ 									(errcode(ERRCODE_RESERVED_NAME),
+ 									 errmsg("%s cannot be used as a role name here",
+ 											"SESSION_USER"),
+-									 parser_errposition(@1)));
++									 parser_errposition(@1.start)));
+ 							break;
+ 						case ROLESPEC_CURRENT_USER:
+ 							ereport(ERROR,
+ 									(errcode(ERRCODE_RESERVED_NAME),
+ 									 errmsg("%s cannot be used as a role name here",
+ 											"CURRENT_USER"),
+-									 parser_errposition(@1)));
++									 parser_errposition(@1.start)));
+ 							break;
+ 						case ROLESPEC_CURRENT_ROLE:
+ 							ereport(ERROR,
+ 									(errcode(ERRCODE_RESERVED_NAME),
+ 									 errmsg("%s cannot be used as a role name here",
+ 											"CURRENT_ROLE"),
+-									 parser_errposition(@1)));
++									 parser_errposition(@1.start)));
+ 							break;
+ 					}
+ 				}
+@@ -17461,7 +17481,7 @@
+ 
+ 					if (strcmp($1, "public") == 0)
+ 					{
+-						n = (RoleSpec *) makeRoleSpec(ROLESPEC_PUBLIC, @1);
++						n = (RoleSpec *) makeRoleSpec(ROLESPEC_PUBLIC, @1.start);
+ 						n->roletype = ROLESPEC_PUBLIC;
+ 					}
+ 					else if (strcmp($1, "none") == 0)
+@@ -17470,26 +17490,26 @@
+ 								(errcode(ERRCODE_RESERVED_NAME),
+ 								 errmsg("role name \"%s\" is reserved",
+ 										"none"),
+-								 parser_errposition(@1)));
++								 parser_errposition(@1.start)));
+ 					}
+ 					else
+ 					{
+-						n = makeRoleSpec(ROLESPEC_CSTRING, @1);
++						n = makeRoleSpec(ROLESPEC_CSTRING, @1.start);
+ 						n->rolename = pstrdup($1);
+ 					}
+ 					$$ = n;
+ 				}
+ 			| CURRENT_ROLE
+ 				{
+-					$$ = makeRoleSpec(ROLESPEC_CURRENT_ROLE, @1);
++					$$ = makeRoleSpec(ROLESPEC_CURRENT_ROLE, @1.start);
+ 				}
+ 			| CURRENT_USER
+ 				{
+-					$$ = makeRoleSpec(ROLESPEC_CURRENT_USER, @1);
++					$$ = makeRoleSpec(ROLESPEC_CURRENT_USER, @1.start);
+ 				}
+ 			| SESSION_USER
+ 				{
+-					$$ = makeRoleSpec(ROLESPEC_SESSION_USER, @1);
++					$$ = makeRoleSpec(ROLESPEC_SESSION_USER, @1.start);
+ 				}
+ 		;
+ 
+@@ -17537,7 +17557,7 @@
+ 						n->limitOption = $9->limitOption;
+ 					}
+ 					n->lockingClause = $10;
+-					$$ = (Node *) n;
++					$$ = nodeExtent((Node *) n, @$);
+ 				}
+ 		;
+ 
+@@ -17553,7 +17573,7 @@
+ 					n->indirection = check_indirection($2, yyscanner);
+ 					/* nnames will be filled by calling production */
+ 					n->val = (SelectStmt *) $4;
+-					n->location = @1;
++					n->location = @1.start;
+ 					$$ = (Node *) n;
+ 				}
+ 		;
+@@ -18664,8 +18684,56 @@
+ 
+ 	/* OK, update length of RawStmt */
+ 	rs->stmt_len = end_location - rs->stmt_location;
++}
++
++/*
++ * Record the source extent of the rule that produced this node.
++ *
++ * These wrappers exist so that attaching an extent costs one edit per
++ * construction site in the grammar, instead of changing the signature of
++ * shared constructors like makeRangeVar() that have callers all over the
++ * backend.  Only node types that carry location_end are handled; anything
++ * else passes through untouched.
++ */
++static Node *
++nodeExtent(Node *n, YYLTYPE loc)
++{
++	if (n == NULL)
++		return n;
++
++	switch (nodeTag(n))
++	{
++		case T_FuncCall:
++			((FuncCall *) n)->location_end = loc.end;
++			break;
++		case T_ColumnRef:
++			((ColumnRef *) n)->location_end = loc.end;
++			break;
++		case T_RangeVar:
++			((RangeVar *) n)->location_end = loc.end;
++			break;
++		case T_SelectStmt:
++			((SelectStmt *) n)->location = loc.start;
++			((SelectStmt *) n)->location_end = loc.end;
++			break;
++		default:
++			break;
++	}
++	return n;
+ }
+ 
++static FuncCall *
++fcExtent(FuncCall *n, YYLTYPE loc)
++{
++	return (FuncCall *) nodeExtent((Node *) n, loc);
++}
++
++static RangeVar *
++rvExtent(RangeVar *n, YYLTYPE loc)
++{
++	return (RangeVar *) nodeExtent((Node *) n, loc);
++}
++
+ static Node *
+ makeColumnRef(char *colname, List *indirection,
+ 			  int location, core_yyscan_t yyscanner)
+--- a/src/pl/plpgsql/src/pl_gram.y
++++ b/src/pl/plpgsql/src/pl_gram.y
+@@ -414,7 +414,7 @@
+ 						new = palloc0(sizeof(PLpgSQL_stmt_block));
+ 
+ 						new->cmd_type	= PLPGSQL_STMT_BLOCK;
+-						new->lineno		= plpgsql_location_to_lineno(@2);
++						new->lineno		= plpgsql_location_to_lineno(@2.start);
+ 						new->stmtid		= ++plpgsql_curr_compile->nstatements;
+ 						new->label		= $1.label;
+ 						new->n_initvars = $1.n_initvars;
+@@ -422,7 +422,7 @@
+ 						new->body		= $3;
+ 						new->exceptions	= $4;
+ 
+-						check_labels($1.label, $6, @6);
++						check_labels($1.label, $6, @6.start);
+ 						plpgsql_ns_pop();
+ 
+ 						$$ = (PLpgSQL_stmt *) new;
+@@ -484,7 +484,7 @@
+ 						ereport(ERROR,
+ 								(errcode(ERRCODE_SYNTAX_ERROR),
+ 								 errmsg("block label must be placed before DECLARE, not after"),
+-								 parser_errposition(@1)));
++								 parser_errposition(@1.start)));
+ 					}
+ 				;
+ 
+@@ -505,7 +505,7 @@
+ 										(errcode(ERRCODE_DATATYPE_MISMATCH),
+ 										 errmsg("collations are not supported by type %s",
+ 												format_type_be($3->typoid)),
+-										 parser_errposition(@4)));
++										 parser_errposition(@4.start)));
+ 							$3->collation = $4;
+ 						}
+ 
+@@ -524,7 +524,7 @@
+ 									(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+ 									 errmsg("variable \"%s\" must have a default value, since it's declared NOT NULL",
+ 											var->refname),
+-									 parser_errposition(@5)));
++									 parser_errposition(@5.start)));
+ 					}
+ 				| decl_varname K_ALIAS K_FOR decl_aliasitem ';'
+ 					{
+@@ -590,7 +590,7 @@
+ 						new = palloc0(sizeof(PLpgSQL_row));
+ 						new->dtype = PLPGSQL_DTYPE_ROW;
+ 						new->refname = "(unnamed row)";
+-						new->lineno = plpgsql_location_to_lineno(@1);
++						new->lineno = plpgsql_location_to_lineno(@1.start);
+ 						new->rowtupdesc = NULL;
+ 						new->nfields = list_length($2);
+ 						new->fieldnames = palloc(new->nfields * sizeof(char *));
+@@ -645,7 +645,7 @@
+ 									(errcode(ERRCODE_UNDEFINED_OBJECT),
+ 									 errmsg("variable \"%s\" does not exist",
+ 											$1.ident),
+-									 parser_errposition(@1)));
++									 parser_errposition(@1.start)));
+ 						$$ = nsi;
+ 					}
+ 				| unreserved_keyword
+@@ -660,7 +660,7 @@
+ 									(errcode(ERRCODE_UNDEFINED_OBJECT),
+ 									 errmsg("variable \"%s\" does not exist",
+ 											$1),
+-									 parser_errposition(@1)));
++									 parser_errposition(@1.start)));
+ 						$$ = nsi;
+ 					}
+ 				| T_CWORD
+@@ -686,7 +686,7 @@
+ 									(errcode(ERRCODE_UNDEFINED_OBJECT),
+ 									 errmsg("variable \"%s\" does not exist",
+ 											NameListToString($1.idents)),
+-									 parser_errposition(@1)));
++									 parser_errposition(@1.start)));
+ 						$$ = nsi;
+ 					}
+ 				;
+@@ -694,7 +694,7 @@
+ decl_varname	: T_WORD
+ 					{
+ 						$$.name = $1.ident;
+-						$$.lineno = plpgsql_location_to_lineno(@1);
++						$$.lineno = plpgsql_location_to_lineno(@1.start);
+ 						/*
+ 						 * Check to make sure name isn't already declared
+ 						 * in the current block.
+@@ -715,14 +715,14 @@
+ 										(errcode(ERRCODE_DUPLICATE_ALIAS),
+ 										 errmsg("variable \"%s\" shadows a previously defined variable",
+ 												$1.ident),
+-										 parser_errposition(@1)));
++										 parser_errposition(@1.start)));
+ 						}
+ 
+ 					}
+ 				| unreserved_keyword
+ 					{
+ 						$$.name = pstrdup($1);
+-						$$.lineno = plpgsql_location_to_lineno(@1);
++						$$.lineno = plpgsql_location_to_lineno(@1.start);
+ 						/*
+ 						 * Check to make sure name isn't already declared
+ 						 * in the current block.
+@@ -743,7 +743,7 @@
+ 										(errcode(ERRCODE_DUPLICATE_ALIAS),
+ 										 errmsg("variable \"%s\" shadows a previously defined variable",
+ 												$1),
+-										 parser_errposition(@1)));
++										 parser_errposition(@1.start)));
+ 						}
+ 
+ 					}
+@@ -881,7 +881,7 @@
+ 
+ 						new = palloc0(sizeof(PLpgSQL_stmt_perform));
+ 						new->cmd_type = PLPGSQL_STMT_PERFORM;
+-						new->lineno   = plpgsql_location_to_lineno(@1);
++						new->lineno   = plpgsql_location_to_lineno(@1.start);
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 						plpgsql_push_back_token(K_PERFORM);
+ 
+@@ -916,7 +916,7 @@
+ 
+ 						new = palloc0(sizeof(PLpgSQL_stmt_call));
+ 						new->cmd_type = PLPGSQL_STMT_CALL;
+-						new->lineno = plpgsql_location_to_lineno(@1);
++						new->lineno = plpgsql_location_to_lineno(@1.start);
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 						plpgsql_push_back_token(K_CALL);
+ 						new->expr = read_sql_stmt();
+@@ -935,7 +935,7 @@
+ 
+ 						new = palloc0(sizeof(PLpgSQL_stmt_call));
+ 						new->cmd_type = PLPGSQL_STMT_CALL;
+-						new->lineno = plpgsql_location_to_lineno(@1);
++						new->lineno = plpgsql_location_to_lineno(@1.start);
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 						plpgsql_push_back_token(K_DO);
+ 						new->expr = read_sql_stmt();
+@@ -971,10 +971,10 @@
+ 								pmode = 0; /* keep compiler quiet */
+ 						}
+ 
+-						check_assignable($1.datum, @1);
++						check_assignable($1.datum, @1.start);
+ 						new = palloc0(sizeof(PLpgSQL_stmt_assign));
+ 						new->cmd_type = PLPGSQL_STMT_ASSIGN;
+-						new->lineno = plpgsql_location_to_lineno(@1);
++						new->lineno = plpgsql_location_to_lineno(@1.start);
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 						new->varno = $1.datum->dno;
+ 						/* Push back the head name to include it in the stmt */
+@@ -995,7 +995,7 @@
+ 
+ 						new = palloc0(sizeof(PLpgSQL_stmt_getdiag));
+ 						new->cmd_type = PLPGSQL_STMT_GETDIAG;
+-						new->lineno = plpgsql_location_to_lineno(@1);
++						new->lineno = plpgsql_location_to_lineno(@1.start);
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 						new->is_stacked = $2;
+ 						new->diag_items = $4;
+@@ -1017,7 +1017,7 @@
+ 												(errcode(ERRCODE_SYNTAX_ERROR),
+ 												 errmsg("diagnostics item %s is not allowed in GET STACKED DIAGNOSTICS",
+ 														plpgsql_getdiag_kindname(ditem->kind)),
+-												 parser_errposition(@1)));
++												 parser_errposition(@1.start)));
+ 									break;
+ 								/* these fields are disallowed in current case */
+ 								case PLPGSQL_GETDIAG_ERROR_CONTEXT:
+@@ -1035,7 +1035,7 @@
+ 												(errcode(ERRCODE_SYNTAX_ERROR),
+ 												 errmsg("diagnostics item %s is not allowed in GET CURRENT DIAGNOSTICS",
+ 														plpgsql_getdiag_kindname(ditem->kind)),
+-												 parser_errposition(@1)));
++												 parser_errposition(@1.start)));
+ 									break;
+ 								/* these fields are allowed in either case */
+ 								case PLPGSQL_GETDIAG_CONTEXT:
+@@ -1149,19 +1149,19 @@
+ 									(errcode(ERRCODE_SYNTAX_ERROR),
+ 									 errmsg("\"%s\" is not a scalar variable",
+ 											NameOfDatum(&($1))),
+-									 parser_errposition(@1)));
+-						check_assignable($1.datum, @1);
++									 parser_errposition(@1.start)));
++						check_assignable($1.datum, @1.start);
+ 						$$ = $1.datum;
+ 					}
+ 				| T_WORD
+ 					{
+ 						/* just to give a better message than "syntax error" */
+-						word_is_not_variable(&($1), @1);
++						word_is_not_variable(&($1), @1.start);
+ 					}
+ 				| T_CWORD
+ 					{
+ 						/* just to give a better message than "syntax error" */
+-						cword_is_not_variable(&($1), @1);
++						cword_is_not_variable(&($1), @1.start);
+ 					}
+ 				;
+ 
+@@ -1171,7 +1171,7 @@
+ 
+ 						new = palloc0(sizeof(PLpgSQL_stmt_if));
+ 						new->cmd_type = PLPGSQL_STMT_IF;
+-						new->lineno = plpgsql_location_to_lineno(@1);
++						new->lineno = plpgsql_location_to_lineno(@1.start);
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 						new->cond = $2;
+ 						new->then_body = $3;
+@@ -1191,7 +1191,7 @@
+ 						PLpgSQL_if_elsif *new;
+ 
+ 						new = palloc0(sizeof(PLpgSQL_if_elsif));
+-						new->lineno = plpgsql_location_to_lineno(@2);
++						new->lineno = plpgsql_location_to_lineno(@2.start);
+ 						new->cond = $3;
+ 						new->stmts = $4;
+ 
+@@ -1211,7 +1211,7 @@
+ 
+ stmt_case		: K_CASE opt_expr_until_when case_when_list opt_case_else K_END K_CASE ';'
+ 					{
+-						$$ = make_case(@1, $2, $3, $4);
++						$$ = make_case(@1.start, $2, $3, $4);
+ 					}
+ 				;
+ 
+@@ -1244,7 +1244,7 @@
+ 					{
+ 						PLpgSQL_case_when *new = palloc(sizeof(PLpgSQL_case_when));
+ 
+-						new->lineno	= plpgsql_location_to_lineno(@1);
++						new->lineno	= plpgsql_location_to_lineno(@1.start);
+ 						new->expr = $2;
+ 						new->stmts = $3;
+ 						$$ = new;
+@@ -1276,7 +1276,7 @@
+ 
+ 						new = palloc0(sizeof(PLpgSQL_stmt_loop));
+ 						new->cmd_type = PLPGSQL_STMT_LOOP;
+-						new->lineno = plpgsql_location_to_lineno(@2);
++						new->lineno = plpgsql_location_to_lineno(@2.start);
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 						new->label = $1;
+ 						new->body = $3.stmts;
+@@ -1294,7 +1294,7 @@
+ 
+ 						new = palloc0(sizeof(PLpgSQL_stmt_while));
+ 						new->cmd_type = PLPGSQL_STMT_WHILE;
+-						new->lineno = plpgsql_location_to_lineno(@2);
++						new->lineno = plpgsql_location_to_lineno(@2.start);
+ 						new->stmtid	= ++plpgsql_curr_compile->nstatements;
+ 						new->label = $1;
+ 						new->cond = $3;
+@@ -1315,7 +1315,7 @@
+ 							PLpgSQL_stmt_fori *new;
+ 
+ 							new = (PLpgSQL_stmt_fori *) $3;
+-							new->lineno = plpgsql_location_to_lineno(@2);
++							new->lineno = plpgsql_location_to_lineno(@2.start);
+ 							new->label = $1;
+ 							new->body = $4.stmts;
+ 							$$ = (PLpgSQL_stmt *) new;
+@@ -1329,7 +1329,7 @@
+ 								   $3->cmd_type == PLPGSQL_STMT_DYNFORS);
+ 							/* forq is the common supertype of all three */
+ 							new = (PLpgSQL_stmt_forq *) $3;
+-							new->lineno = plpgsql_location_to_lineno(@2);
++							new->lineno = plpgsql_location_to_lineno(@2.start);
+ 							new->label = $1;
+ 							new->body = $4.stmts;
+ 							$$ = (PLpgSQL_stmt *) new;
+@@ -1344,7 +1344,7 @@
+ for_control		: for_variable K_IN
+ 					{
+ 						int			tok = yylex();
+-						int			tokloc = yylloc;
++						int			tokloc = yylloc.start;
+ 
+ 						if (tok == K_EXECUTE)
+ 						{
+@@ -1363,14 +1363,14 @@
+ 							if ($1.row)
+ 							{
+ 								new->var = (PLpgSQL_variable *) $1.row;
+-								check_assignable($1.row, @1);
++								check_assignable($1.row, @1.start);
+ 							}
+ 							else if ($1.scalar)
+ 							{
+ 								/* convert single scalar to list */
+ 								new->var = (PLpgSQL_variable *)
+ 									make_scalar_list1($1.name, $1.scalar,
+-													  $1.lineno, @1);
++													  $1.lineno, @1.start);
+ 								/* make_scalar_list1 did check_assignable */
+ 							}
+ 							else
+@@ -1378,7 +1378,7 @@
+ 								ereport(ERROR,
+ 										(errcode(ERRCODE_DATATYPE_MISMATCH),
+ 										 errmsg("loop variable of loop over rows must be a record variable or list of scalar variables"),
+-										 parser_errposition(@1)));
++										 parser_errposition(@1.start)));
+ 							}
+ 							new->query = expr;
+ 
+@@ -1413,7 +1413,7 @@
+ 								ereport(ERROR,
+ 										(errcode(ERRCODE_SYNTAX_ERROR),
+ 										 errmsg("cursor FOR loop must have only one target variable"),
+-										 parser_errposition(@1)));
++										 parser_errposition(@1.start)));
+ 
+ 							/* can't use an unbound cursor this way */
+ 							if (cursor->cursor_explicit_expr == NULL)
+@@ -1510,7 +1510,7 @@
+ 									ereport(ERROR,
+ 											(errcode(ERRCODE_SYNTAX_ERROR),
+ 											 errmsg("integer FOR loop must have only one target variable"),
+-											 parser_errposition(@1)));
++											 parser_errposition(@1.start)));
+ 
+ 								/* create loop's private variable */
+ 								fvar = (PLpgSQL_var *)
+@@ -1556,14 +1556,14 @@
+ 								if ($1.row)
+ 								{
+ 									new->var = (PLpgSQL_variable *) $1.row;
+-									check_assignable($1.row, @1);
++									check_assignable($1.row, @1.start);
+ 								}
+ 								else if ($1.scalar)
+ 								{
+ 									/* convert single scalar to list */
+ 									new->var = (PLpgSQL_variable *)
+ 										make_scalar_list1($1.name, $1.scalar,
+-														  $1.lineno, @1);
++														  $1.lineno, @1.start);
+ 									/* make_scalar_list1 did check_assignable */
+ 								}
+ 								else
+@@ -1571,7 +1571,7 @@
+ 									ereport(ERROR,
+ 											(errcode(ERRCODE_SYNTAX_ERROR),
+ 											 errmsg("loop variable of loop over rows must be a record variable or list of scalar variables"),
+-											 parser_errposition(@1)));
++											 parser_errposition(@1.start)));
+ 								}
+ 
+ 								new->query = expr1;
+@@ -1602,7 +1602,7 @@
+ for_variable	: T_DATUM
+ 					{
+ 						$$.name = NameOfDatum(&($1));
+-						$$.lineno = plpgsql_location_to_lineno(@1);
++						$$.lineno = plpgsql_location_to_lineno(@1.start);
+ 						if ($1.datum->dtype == PLPGSQL_DTYPE_ROW ||
+ 							$1.datum->dtype == PLPGSQL_DTYPE_REC)
+ 						{
+@@ -1622,7 +1622,7 @@
+ 								$$.row = (PLpgSQL_datum *)
+ 									read_into_scalar_list($$.name,
+ 														  $$.scalar,
+-														  @1);
++														  @1.start);
+ 						}
+ 					}
+ 				| T_WORD
+@@ -1630,19 +1630,19 @@
+ 						int			tok;
+ 
+ 						$$.name = $1.ident;
+-						$$.lineno = plpgsql_location_to_lineno(@1);
++						$$.lineno = plpgsql_location_to_lineno(@1.start);
+ 						$$.scalar = NULL;
+ 						$$.row = NULL;
+ 						/* check for comma-separated list */
+ 						tok = yylex();
+ 						plpgsql_push_back_token(tok);
+ 						if (tok == ',')
+-							word_is_not_variable(&($1), @1);
++							word_is_not_variable(&($1), @1.start);
+ 					}
+ 				| T_CWORD
+ 					{
+ 						/* just to give a better message than "syntax error" */
+-						cword_is_not_variable(&($1), @1);
++						cword_is_not_variable(&($1), @1.start);
+ 					}
+ 				;
+ 
+@@ -1652,7 +1652,7 @@
+ 
+ 						new = palloc0(sizeof(PLpgSQL_stmt_foreach_a));
+ 						new->cmd_type = PLPGSQL_STMT_FOREACH_A;
+-						new->lineno = plpgsql_location_to_lineno(@2);
++						new->lineno = plpgsql_location_to_lineno(@2.start);
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 						new->label = $1;
+ 						new->slice = $4;
+@@ -1662,19 +1662,19 @@
+ 						if ($3.row)
+ 						{
+ 							new->varno = $3.row->dno;
+-							check_assignable($3.row, @3);
++							check_assignable($3.row, @3.start);
+ 						}
+ 						else if ($3.scalar)
+ 						{
+ 							new->varno = $3.scalar->dno;
+-							check_assignable($3.scalar, @3);
++							check_assignable($3.scalar, @3.start);
+ 						}
+ 						else
+ 						{
+ 							ereport(ERROR,
+ 									(errcode(ERRCODE_SYNTAX_ERROR),
+ 									 errmsg("loop variable of FOREACH must be a known variable or list of variables"),
+-											 parser_errposition(@3)));
++											 parser_errposition(@3.start)));
+ 						}
+ 
+ 						check_labels($1, $8.end_label, $8.end_label_location);
+@@ -1702,7 +1702,7 @@
+ 						new->cmd_type = PLPGSQL_STMT_EXIT;
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 						new->is_exit = $1;
+-						new->lineno	= plpgsql_location_to_lineno(@1);
++						new->lineno	= plpgsql_location_to_lineno(@1.start);
+ 						new->label = $2;
+ 						new->cond = $3;
+ 
+@@ -1718,14 +1718,14 @@
+ 										 errmsg("there is no label \"%s\" "
+ 												"attached to any block or loop enclosing this statement",
+ 												$2),
+-										 parser_errposition(@2)));
++										 parser_errposition(@2.start)));
+ 							/* CONTINUE only allows loop labels */
+ 							if (label->itemno != PLPGSQL_LABEL_LOOP && !new->is_exit)
+ 								ereport(ERROR,
+ 										(errcode(ERRCODE_SYNTAX_ERROR),
+ 										 errmsg("block label \"%s\" cannot be used in CONTINUE",
+ 												$2),
+-										 parser_errposition(@2)));
++										 parser_errposition(@2.start)));
+ 						}
+ 						else
+ 						{
+@@ -1740,7 +1740,7 @@
+ 										 new->is_exit ?
+ 										 errmsg("EXIT cannot be used outside a loop, unless it has a label") :
+ 										 errmsg("CONTINUE cannot be used outside a loop"),
+-										 parser_errposition(@1)));
++										 parser_errposition(@1.start)));
+ 						}
+ 
+ 						$$ = (PLpgSQL_stmt *) new;
+@@ -1768,17 +1768,17 @@
+ 						if (tok_is_keyword(tok, &yylval,
+ 										   K_NEXT, "next"))
+ 						{
+-							$$ = make_return_next_stmt(@1);
++							$$ = make_return_next_stmt(@1.start);
+ 						}
+ 						else if (tok_is_keyword(tok, &yylval,
+ 												K_QUERY, "query"))
+ 						{
+-							$$ = make_return_query_stmt(@1);
++							$$ = make_return_query_stmt(@1.start);
+ 						}
+ 						else
+ 						{
+ 							plpgsql_push_back_token(tok);
+-							$$ = make_return_stmt(@1);
++							$$ = make_return_stmt(@1.start);
+ 						}
+ 					}
+ 				;
+@@ -1791,7 +1791,7 @@
+ 						new = palloc(sizeof(PLpgSQL_stmt_raise));
+ 
+ 						new->cmd_type = PLPGSQL_STMT_RAISE;
+-						new->lineno = plpgsql_location_to_lineno(@1);
++						new->lineno = plpgsql_location_to_lineno(@1.start);
+ 						new->stmtid	= ++plpgsql_curr_compile->nstatements;
+ 						new->elog_level = ERROR;	/* default */
+ 						new->condname = NULL;
+@@ -1936,7 +1936,7 @@
+ 						new = palloc(sizeof(PLpgSQL_stmt_assert));
+ 
+ 						new->cmd_type = PLPGSQL_STMT_ASSERT;
+-						new->lineno = plpgsql_location_to_lineno(@1);
++						new->lineno = plpgsql_location_to_lineno(@1.start);
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 
+ 						new->cond = read_sql_expression2(',', ';',
+@@ -1956,7 +1956,7 @@
+ 					{
+ 						$$.stmts = $1;
+ 						$$.end_label = $4;
+-						$$.end_label_location = @4;
++						$$.end_label_location = @4.start;
+ 					}
+ 				;
+ 
+@@ -1972,15 +1972,15 @@
+  */
+ stmt_execsql	: K_IMPORT
+ 					{
+-						$$ = make_execsql_stmt(K_IMPORT, @1, NULL);
++						$$ = make_execsql_stmt(K_IMPORT, @1.start, NULL);
+ 					}
+ 				| K_INSERT
+ 					{
+-						$$ = make_execsql_stmt(K_INSERT, @1, NULL);
++						$$ = make_execsql_stmt(K_INSERT, @1.start, NULL);
+ 					}
+ 				| K_MERGE
+ 					{
+-						$$ = make_execsql_stmt(K_MERGE, @1, NULL);
++						$$ = make_execsql_stmt(K_MERGE, @1.start, NULL);
+ 					}
+ 				| T_WORD
+ 					{
+@@ -1990,8 +1990,8 @@
+ 						plpgsql_push_back_token(tok);
+ 						if (tok == '=' || tok == COLON_EQUALS ||
+ 							tok == '[' || tok == '.')
+-							word_is_not_variable(&($1), @1);
+-						$$ = make_execsql_stmt(T_WORD, @1, &($1));
++							word_is_not_variable(&($1), @1.start);
++						$$ = make_execsql_stmt(T_WORD, @1.start, &($1));
+ 					}
+ 				| T_CWORD
+ 					{
+@@ -2001,8 +2001,8 @@
+ 						plpgsql_push_back_token(tok);
+ 						if (tok == '=' || tok == COLON_EQUALS ||
+ 							tok == '[' || tok == '.')
+-							cword_is_not_variable(&($1), @1);
+-						$$ = make_execsql_stmt(T_CWORD, @1, NULL);
++							cword_is_not_variable(&($1), @1.start);
++						$$ = make_execsql_stmt(T_CWORD, @1.start, NULL);
+ 					}
+ 				;
+ 
+@@ -2020,7 +2020,7 @@
+ 
+ 						new = palloc(sizeof(PLpgSQL_stmt_dynexecute));
+ 						new->cmd_type = PLPGSQL_STMT_DYNEXECUTE;
+-						new->lineno = plpgsql_location_to_lineno(@1);
++						new->lineno = plpgsql_location_to_lineno(@1.start);
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 						new->query = expr;
+ 						new->into = false;
+@@ -2077,7 +2077,7 @@
+ 
+ 						new = palloc0(sizeof(PLpgSQL_stmt_open));
+ 						new->cmd_type = PLPGSQL_STMT_OPEN;
+-						new->lineno = plpgsql_location_to_lineno(@1);
++						new->lineno = plpgsql_location_to_lineno(@1.start);
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 						new->curvar = $2->dno;
+ 						new->cursor_options = CURSOR_OPT_FAST_PLAN;
+@@ -2167,9 +2167,9 @@
+ 							ereport(ERROR,
+ 									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 									 errmsg("FETCH statement cannot return multiple rows"),
+-									 parser_errposition(@1)));
++									 parser_errposition(@1.start)));
+ 
+-						fetch->lineno = plpgsql_location_to_lineno(@1);
++						fetch->lineno = plpgsql_location_to_lineno(@1.start);
+ 						fetch->target	= target;
+ 						fetch->curvar	= $3->dno;
+ 						fetch->is_move	= false;
+@@ -2182,7 +2182,7 @@
+ 					{
+ 						PLpgSQL_stmt_fetch *fetch = $2;
+ 
+-						fetch->lineno = plpgsql_location_to_lineno(@1);
++						fetch->lineno = plpgsql_location_to_lineno(@1.start);
+ 						fetch->curvar = $3->dno;
+ 						fetch->is_move = true;
+ 
+@@ -2202,7 +2202,7 @@
+ 
+ 						new = palloc(sizeof(PLpgSQL_stmt_close));
+ 						new->cmd_type = PLPGSQL_STMT_CLOSE;
+-						new->lineno = plpgsql_location_to_lineno(@1);
++						new->lineno = plpgsql_location_to_lineno(@1.start);
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 						new->curvar = $2->dno;
+ 
+@@ -2223,7 +2223,7 @@
+ 
+ 						new = palloc(sizeof(PLpgSQL_stmt_commit));
+ 						new->cmd_type = PLPGSQL_STMT_COMMIT;
+-						new->lineno = plpgsql_location_to_lineno(@1);
++						new->lineno = plpgsql_location_to_lineno(@1.start);
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 						new->chain = $2;
+ 
+@@ -2237,7 +2237,7 @@
+ 
+ 						new = palloc(sizeof(PLpgSQL_stmt_rollback));
+ 						new->cmd_type = PLPGSQL_STMT_ROLLBACK;
+-						new->lineno = plpgsql_location_to_lineno(@1);
++						new->lineno = plpgsql_location_to_lineno(@1.start);
+ 						new->stmtid = ++plpgsql_curr_compile->nstatements;
+ 						new->chain = $2;
+ 
+@@ -2264,25 +2264,25 @@
+ 							ereport(ERROR,
+ 									(errcode(ERRCODE_DATATYPE_MISMATCH),
+ 									 errmsg("cursor variable must be a simple variable"),
+-									 parser_errposition(@1)));
++									 parser_errposition(@1.start)));
+ 
+ 						if (((PLpgSQL_var *) $1.datum)->datatype->typoid != REFCURSOROID)
+ 							ereport(ERROR,
+ 									(errcode(ERRCODE_DATATYPE_MISMATCH),
+ 									 errmsg("variable \"%s\" must be of type cursor or refcursor",
+ 											((PLpgSQL_var *) $1.datum)->refname),
+-									 parser_errposition(@1)));
++									 parser_errposition(@1.start)));
+ 						$$ = (PLpgSQL_var *) $1.datum;
+ 					}
+ 				| T_WORD
+ 					{
+ 						/* just to give a better message than "syntax error" */
+-						word_is_not_variable(&($1), @1);
++						word_is_not_variable(&($1), @1.start);
+ 					}
+ 				| T_CWORD
+ 					{
+ 						/* just to give a better message than "syntax error" */
+-						cword_is_not_variable(&($1), @1);
++						cword_is_not_variable(&($1), @1.start);
+ 					}
+ 				;
+ 
+@@ -2297,7 +2297,7 @@
+ 						 * scope of the names extends to the end of the
+ 						 * current block.
+ 						 */
+-						int			lineno = plpgsql_location_to_lineno(@1);
++						int			lineno = plpgsql_location_to_lineno(@1.start);
+ 						PLpgSQL_exception_block *new = palloc(sizeof(PLpgSQL_exception_block));
+ 						PLpgSQL_variable *var;
+ 
+@@ -2345,7 +2345,7 @@
+ 						PLpgSQL_exception *new;
+ 
+ 						new = palloc0(sizeof(PLpgSQL_exception));
+-						new->lineno = plpgsql_location_to_lineno(@1);
++						new->lineno = plpgsql_location_to_lineno(@1.start);
+ 						new->conditions = $2;
+ 						new->action = $4;
+ 
+@@ -2626,9 +2626,9 @@
+ current_token_is_not_variable(int tok)
+ {
+ 	if (tok == T_WORD)
+-		word_is_not_variable(&(yylval.word), yylloc);
++		word_is_not_variable(&(yylval.word), yylloc.start);
+ 	else if (tok == T_CWORD)
+-		cword_is_not_variable(&(yylval.cword), yylloc);
++		cword_is_not_variable(&(yylval.cword), yylloc.start);
+ 	else
+ 		yyerror("syntax error");
+ }
+@@ -2704,7 +2704,7 @@
+ 	{
+ 		tok = yylex();
+ 		if (startlocation < 0)			/* remember loc of first token */
+-			startlocation = yylloc;
++			startlocation = yylloc.start;
+ 		if (tok == until && parenlevel == 0)
+ 			break;
+ 		if (tok == until2 && parenlevel == 0)
+@@ -2733,16 +2733,16 @@
+ 						(errcode(ERRCODE_SYNTAX_ERROR),
+ 						 errmsg("missing \"%s\" at end of SQL expression",
+ 								expected),
+-						 parser_errposition(yylloc)));
++						 parser_errposition(yylloc.start)));
+ 			else
+ 				ereport(ERROR,
+ 						(errcode(ERRCODE_SYNTAX_ERROR),
+ 						 errmsg("missing \"%s\" at end of SQL statement",
+ 								expected),
+-						 parser_errposition(yylloc)));
++						 parser_errposition(yylloc.start)));
+ 		}
+ 		/* Remember end+1 location of last accepted token */
+-		endlocation = yylloc + plpgsql_token_length();
++		endlocation = yylloc.start + plpgsql_token_length();
+ 	}
+ 
+ 	plpgsql_IdentifierLookup = save_IdentifierLookup;
+@@ -2806,7 +2806,7 @@
+ 		tok = yylex();
+ 
+ 	/* The current token is the start of what we'll pass to parse_datatype */
+-	startlocation = yylloc;
++	startlocation = yylloc.start;
+ 
+ 	/*
+ 	 * If we have a simple or composite identifier, check for %TYPE and
+@@ -2930,7 +2930,7 @@
+ 
+ 	/* set up ds to contain complete typename text */
+ 	initStringInfo(&ds);
+-	plpgsql_append_source_text(&ds, startlocation, yylloc);
++	plpgsql_append_source_text(&ds, startlocation, yylloc.start);
+ 	type_name = ds.data;
+ 
+ 	if (type_name[0] == '\0')
+@@ -3022,7 +3022,7 @@
+ 		prev_tok = tok;
+ 		tok = yylex();
+ 		if (have_into && into_end_loc < 0)
+-			into_end_loc = yylloc;		/* token after the INTO part */
++			into_end_loc = yylloc.start;		/* token after the INTO part */
+ 		/* Detect CREATE [OR REPLACE] {FUNCTION|PROCEDURE} */
+ 		if (tokens[0] == 'c' && token_count < sizeof(tokens))
+ 		{
+@@ -3071,7 +3071,7 @@
+ 			if (have_into)
+ 				yyerror("INTO specified more than once");
+ 			have_into = true;
+-			into_start_loc = yylloc;
++			into_start_loc = yylloc.start;
+ 			plpgsql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
+ 			read_into_target(&target, &have_strict);
+ 			plpgsql_IdentifierLookup = IDENTIFIER_LOOKUP_EXPR;
+@@ -3089,10 +3089,10 @@
+ 		 */
+ 		plpgsql_append_source_text(&ds, location, into_start_loc);
+ 		appendStringInfoSpaces(&ds, into_end_loc - into_start_loc);
+-		plpgsql_append_source_text(&ds, into_end_loc, yylloc);
++		plpgsql_append_source_text(&ds, into_end_loc, yylloc.start);
+ 	}
+ 	else
+-		plpgsql_append_source_text(&ds, location, yylloc);
++		plpgsql_append_source_text(&ds, location, yylloc.start);
+ 
+ 	/* trim any trailing whitespace, for neatness */
+ 	while (ds.len > 0 && scanner_isspace(ds.data[ds.len - 1]))
+@@ -3302,7 +3302,7 @@
+ 					(errcode(ERRCODE_DATATYPE_MISMATCH),
+ 					 errmsg("RETURN cannot have a parameter in function returning set"),
+ 					 errhint("Use RETURN NEXT or RETURN QUERY."),
+-					 parser_errposition(yylloc)));
++					 parser_errposition(yylloc.start)));
+ 	}
+ 	else if (plpgsql_curr_compile->fn_rettype == VOIDOID)
+ 	{
+@@ -3312,12 +3312,12 @@
+ 				ereport(ERROR,
+ 						(errcode(ERRCODE_SYNTAX_ERROR),
+ 						 errmsg("RETURN cannot have a parameter in a procedure"),
+-						 parser_errposition(yylloc)));
++						 parser_errposition(yylloc.start)));
+ 			else
+ 				ereport(ERROR,
+ 						(errcode(ERRCODE_DATATYPE_MISMATCH),
+ 						 errmsg("RETURN cannot have a parameter in function returning void"),
+-						 parser_errposition(yylloc)));
++						 parser_errposition(yylloc.start)));
+ 		}
+ 	}
+ 	else if (plpgsql_curr_compile->out_param_varno >= 0)
+@@ -3326,7 +3326,7 @@
+ 			ereport(ERROR,
+ 					(errcode(ERRCODE_DATATYPE_MISMATCH),
+ 					 errmsg("RETURN cannot have a parameter in function with OUT parameters"),
+-					 parser_errposition(yylloc)));
++					 parser_errposition(yylloc.start)));
+ 		new->retvarno = plpgsql_curr_compile->out_param_varno;
+ 	}
+ 	else
+@@ -3389,7 +3389,7 @@
+ 			ereport(ERROR,
+ 					(errcode(ERRCODE_DATATYPE_MISMATCH),
+ 					 errmsg("RETURN NEXT cannot have a parameter in function with OUT parameters"),
+-					 parser_errposition(yylloc)));
++					 parser_errposition(yylloc.start)));
+ 		new->retvarno = plpgsql_curr_compile->out_param_varno;
+ 	}
+ 	else
+@@ -3548,21 +3548,21 @@
+ 			if (yylval.wdatum.datum->dtype == PLPGSQL_DTYPE_ROW ||
+ 				yylval.wdatum.datum->dtype == PLPGSQL_DTYPE_REC)
+ 			{
+-				check_assignable(yylval.wdatum.datum, yylloc);
++				check_assignable(yylval.wdatum.datum, yylloc.start);
+ 				*target = (PLpgSQL_variable *) yylval.wdatum.datum;
+ 
+ 				if ((tok = yylex()) == ',')
+ 					ereport(ERROR,
+ 							(errcode(ERRCODE_SYNTAX_ERROR),
+ 							 errmsg("record variable cannot be part of multiple-item INTO list"),
+-							 parser_errposition(yylloc)));
++							 parser_errposition(yylloc.start)));
+ 				plpgsql_push_back_token(tok);
+ 			}
+ 			else
+ 			{
+ 				*target = (PLpgSQL_variable *)
+ 					read_into_scalar_list(NameOfDatum(&(yylval.wdatum)),
+-										  yylval.wdatum.datum, yylloc);
++										  yylval.wdatum.datum, yylloc.start);
+ 			}
+ 			break;
+ 
+@@ -3601,20 +3601,20 @@
+ 			ereport(ERROR,
+ 					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+ 					 errmsg("too many INTO variables specified"),
+-					 parser_errposition(yylloc)));
++					 parser_errposition(yylloc.start)));
+ 
+ 		tok = yylex();
+ 		switch (tok)
+ 		{
+ 			case T_DATUM:
+-				check_assignable(yylval.wdatum.datum, yylloc);
++				check_assignable(yylval.wdatum.datum, yylloc.start);
+ 				if (yylval.wdatum.datum->dtype == PLPGSQL_DTYPE_ROW ||
+ 					yylval.wdatum.datum->dtype == PLPGSQL_DTYPE_REC)
+ 					ereport(ERROR,
+ 							(errcode(ERRCODE_SYNTAX_ERROR),
+ 							 errmsg("\"%s\" is not a scalar variable",
+ 									NameOfDatum(&(yylval.wdatum))),
+-							 parser_errposition(yylloc)));
++							 parser_errposition(yylloc.start)));
+ 				fieldnames[nfields] = NameOfDatum(&(yylval.wdatum));
+ 				varnos[nfields++]	= yylval.wdatum.datum->dno;
+ 				break;
+@@ -3851,7 +3851,7 @@
+ 					(errcode(ERRCODE_SYNTAX_ERROR),
+ 					 errmsg("cursor \"%s\" has no arguments",
+ 							cursor->refname),
+-					 parser_errposition(yylloc)));
++					 parser_errposition(yylloc.start)));
+ 
+ 		if (tok != until)
+ 			yyerror("syntax error");
+@@ -3865,7 +3865,7 @@
+ 				(errcode(ERRCODE_SYNTAX_ERROR),
+ 				 errmsg("cursor \"%s\" has arguments",
+ 						cursor->refname),
+-				 parser_errposition(yylloc)));
++				 parser_errposition(yylloc.start)));
+ 
+ 	/*
+ 	 * Read the arguments, one by one.
+@@ -3907,7 +3907,7 @@
+ 						(errcode(ERRCODE_SYNTAX_ERROR),
+ 						 errmsg("cursor \"%s\" has no argument named \"%s\"",
+ 								cursor->refname, argname),
+-						 parser_errposition(yylloc)));
++						 parser_errposition(yylloc.start)));
+ 
+ 			/*
+ 			 * Eat the ":=". We already peeked, so the error should never
+@@ -3948,14 +3948,14 @@
+ 					(errcode(ERRCODE_SYNTAX_ERROR),
+ 					 errmsg("not enough arguments for cursor \"%s\"",
+ 							cursor->refname),
+-					 parser_errposition(yylloc)));
++					 parser_errposition(yylloc.start)));
+ 
+ 		if (endtoken == ',' && (argc == row->nfields - 1))
+ 			ereport(ERROR,
+ 					(errcode(ERRCODE_SYNTAX_ERROR),
+ 					 errmsg("too many arguments for cursor \"%s\"",
+ 							cursor->refname),
+-					 parser_errposition(yylloc)));
++					 parser_errposition(yylloc.start)));
+ 	}
+ 
+ 	/* Make positional argument list */
+--- a/src/pl/plpgsql/src/pl_scanner.c
++++ b/src/pl/plpgsql/src/pl_scanner.c
+@@ -185,7 +185,7 @@
+ 						else
+ 							tok1 = T_CWORD;
+ 						/* Adjust token length to include A.B.C */
+-						aux1.leng = aux5.lloc - aux1.lloc + aux5.leng;
++						aux1.leng = aux5.lloc.start - aux1.lloc.start + aux5.leng;
+ 					}
+ 					else
+ 					{
+@@ -200,7 +200,7 @@
+ 						else
+ 							tok1 = T_CWORD;
+ 						/* Adjust token length to include A.B */
+-						aux1.leng = aux3.lloc - aux1.lloc + aux3.leng;
++						aux1.leng = aux3.lloc.start - aux1.lloc.start + aux3.leng;
+ 					}
+ 				}
+ 				else
+@@ -215,7 +215,7 @@
+ 					else
+ 						tok1 = T_CWORD;
+ 					/* Adjust token length to include A.B */
+-					aux1.leng = aux3.lloc - aux1.lloc + aux3.leng;
++					aux1.leng = aux3.lloc.start - aux1.lloc.start + aux3.leng;
+ 				}
+ 			}
+ 			else
+@@ -224,7 +224,7 @@
+ 				push_back_token(tok3, &aux3);
+ 				push_back_token(tok2, &aux2);
+ 				if (plpgsql_parse_word(aux1.lval.str,
+-									   core_yy.scanbuf + aux1.lloc,
++									   core_yy.scanbuf + aux1.lloc.start,
+ 									   true,
+ 									   &aux1.lval.wdatum,
+ 									   &aux1.lval.word))
+@@ -264,7 +264,7 @@
+ 			 * non-variable cases.
+ 			 */
+ 			if (plpgsql_parse_word(aux1.lval.str,
+-								   core_yy.scanbuf + aux1.lloc,
++								   core_yy.scanbuf + aux1.lloc.start,
+ 								   (!AT_STMT_START(plpgsql_yytoken) ||
+ 									(tok2 == '=' || tok2 == COLON_EQUALS ||
+ 									 tok2 == '[')),
+@@ -340,7 +340,7 @@
+ 						   yyscanner);
+ 
+ 		/* remember the length of yytext before it gets changed */
+-		yytext = core_yy.scanbuf + auxdata->lloc;
++		yytext = core_yy.scanbuf + auxdata->lloc.start;
+ 		auxdata->leng = strlen(yytext);
+ 
+ 		/* Check for << >> and #, which the core considers operators */
+@@ -470,10 +470,10 @@
+ 
+ 	*tok1_p = tok1;
+ 	if (tok1_loc)
+-		*tok1_loc = aux1.lloc;
++		*tok1_loc = aux1.lloc.start;
+ 	*tok2_p = tok2;
+ 	if (tok2_loc)
+-		*tok2_loc = aux2.lloc;
++		*tok2_loc = aux2.lloc.start;
+ 
+ 	push_back_token(tok2, &aux2);
+ 	push_back_token(tok1, &aux1);
+@@ -520,7 +520,7 @@
+ void
+ plpgsql_yyerror(const char *message)
+ {
+-	char	   *yytext = core_yy.scanbuf + plpgsql_yylloc;
++	char	   *yytext = core_yy.scanbuf + plpgsql_yylloc.start;
+ 
+ 	if (*yytext == '\0')
+ 	{
+@@ -528,7 +528,7 @@
+ 				(errcode(ERRCODE_SYNTAX_ERROR),
+ 		/* translator: %s is typically the translation of "syntax error" */
+ 				 errmsg("%s at end of input", _(message)),
+-				 plpgsql_scanner_errposition(plpgsql_yylloc)));
++				 plpgsql_scanner_errposition(plpgsql_yylloc.start)));
+ 	}
+ 	else
+ 	{
+@@ -544,7 +544,7 @@
+ 				(errcode(ERRCODE_SYNTAX_ERROR),
+ 		/* translator: first %s is typically the translation of "syntax error" */
+ 				 errmsg("%s at or near \"%s\"", _(message), yytext),
+-				 plpgsql_scanner_errposition(plpgsql_yylloc)));
++				 plpgsql_scanner_errposition(plpgsql_yylloc.start)));
+ 	}
+ }
+ 

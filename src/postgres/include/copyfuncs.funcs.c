@@ -61,6 +61,7 @@ _copyRangeVar(const RangeVar *from)
 	COPY_SCALAR_FIELD(relpersistence);
 	COPY_NODE_FIELD(alias);
 	COPY_LOCATION_FIELD(location);
+	COPY_LOCATION_FIELD(location_end);
 
 	return newnode;
 }
@@ -1054,6 +1055,7 @@ _copyColumnRef(const ColumnRef *from)
 
 	COPY_NODE_FIELD(fields);
 	COPY_LOCATION_FIELD(location);
+	COPY_LOCATION_FIELD(location_end);
 
 	return newnode;
 }
@@ -1135,6 +1137,7 @@ _copyFuncCall(const FuncCall *from)
 	COPY_SCALAR_FIELD(func_variadic);
 	COPY_SCALAR_FIELD(funcformat);
 	COPY_LOCATION_FIELD(location);
+	COPY_LOCATION_FIELD(location_end);
 
 	return newnode;
 }
@@ -2082,6 +2085,8 @@ _copySelectStmt(const SelectStmt *from)
 	COPY_SCALAR_FIELD(all);
 	COPY_NODE_FIELD(larg);
 	COPY_NODE_FIELD(rarg);
+	COPY_LOCATION_FIELD(location);
+	COPY_LOCATION_FIELD(location_end);
 
 	return newnode;
 }

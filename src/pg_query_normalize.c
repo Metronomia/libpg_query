@@ -152,7 +152,7 @@ fill_in_constant_lengths(pgssConstLocations *jstate, const char *query)
 			 * We should find the token position exactly, but if we somehow
 			 * run past it, work with that.
 			 */
-			if (yylloc >= loc)
+			if (yylloc.start >= loc)
 			{
 				if (query[loc] == '-')
 				{

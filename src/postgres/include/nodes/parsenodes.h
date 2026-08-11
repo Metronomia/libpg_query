@@ -293,6 +293,7 @@ typedef struct ColumnRef
 	NodeTag		type;
 	List	   *fields;			/* field names (String nodes) or A_Star */
 	ParseLoc	location;		/* token location, or -1 if unknown */
+	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
 } ColumnRef;
 
 /*
@@ -434,6 +435,7 @@ typedef struct FuncCall
 	bool		func_variadic;	/* last argument was labeled VARIADIC */
 	CoercionForm funcformat;	/* how to display this node */
 	ParseLoc	location;		/* token location, or -1 if unknown */
+	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
 } FuncCall;
 
 /*
@@ -2160,6 +2162,9 @@ typedef struct SelectStmt
 	struct SelectStmt *larg;	/* left child */
 	struct SelectStmt *rarg;	/* right child */
 	/* Eventually add fields for CORRESPONDING spec here */
+
+	ParseLoc	location;		/* token location, or -1 if unknown */
+	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
 } SelectStmt;
 
 

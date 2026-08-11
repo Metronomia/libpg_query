@@ -45,6 +45,7 @@ void remove_numeric_key(char *parse_tree_json, char* key)
 void remove_node_locations(char *parse_tree_json)
 {
 	remove_numeric_key(parse_tree_json, "location");
+	remove_numeric_key(parse_tree_json, "location_end");
 	remove_numeric_key(parse_tree_json, "name_location");
 }
 

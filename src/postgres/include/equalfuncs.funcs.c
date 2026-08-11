@@ -57,6 +57,7 @@ _equalRangeVar(const RangeVar *a, const RangeVar *b)
 	COMPARE_SCALAR_FIELD(relpersistence);
 	COMPARE_NODE_FIELD(alias);
 	COMPARE_LOCATION_FIELD(location);
+	COMPARE_LOCATION_FIELD(location_end);
 
 	return true;
 }
@@ -914,6 +915,7 @@ _equalColumnRef(const ColumnRef *a, const ColumnRef *b)
 {
 	COMPARE_NODE_FIELD(fields);
 	COMPARE_LOCATION_FIELD(location);
+	COMPARE_LOCATION_FIELD(location_end);
 
 	return true;
 }
@@ -982,6 +984,7 @@ _equalFuncCall(const FuncCall *a, const FuncCall *b)
 	COMPARE_SCALAR_FIELD(agg_distinct);
 	COMPARE_SCALAR_FIELD(func_variadic);
 	COMPARE_LOCATION_FIELD(location);
+	COMPARE_LOCATION_FIELD(location_end);
 
 	return true;
 }
@@ -1801,6 +1804,8 @@ _equalSelectStmt(const SelectStmt *a, const SelectStmt *b)
 	COMPARE_SCALAR_FIELD(all);
 	COMPARE_NODE_FIELD(larg);
 	COMPARE_NODE_FIELD(rarg);
+	COMPARE_LOCATION_FIELD(location);
+	COMPARE_LOCATION_FIELD(location_end);
 
 	return true;
 }

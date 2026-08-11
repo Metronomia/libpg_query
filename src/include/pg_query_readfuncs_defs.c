@@ -281,6 +281,7 @@ _readRangeVar(OUT_TYPE(RangeVar, RangeVar) msg)
   READ_CHAR_FIELD(relpersistence, relpersistence, relpersistence);
   READ_SPECIFIC_NODE_PTR_FIELD(Alias, alias, alias, alias, alias);
   READ_INT_FIELD(location, location, location);
+  READ_INT_FIELD(location_end, location_end, location_end);
   return node;
 }
 
@@ -1133,6 +1134,7 @@ _readColumnRef(OUT_TYPE(ColumnRef, ColumnRef) msg)
   ColumnRef *node = makeNode(ColumnRef);
   READ_LIST_FIELD(fields, fields, fields);
   READ_INT_FIELD(location, location, location);
+  READ_INT_FIELD(location_end, location_end, location_end);
   return node;
 }
 
@@ -1202,6 +1204,7 @@ _readFuncCall(OUT_TYPE(FuncCall, FuncCall) msg)
   READ_BOOL_FIELD(func_variadic, func_variadic, func_variadic);
   READ_ENUM_FIELD(CoercionForm, funcformat, funcformat, funcformat);
   READ_INT_FIELD(location, location, location);
+  READ_INT_FIELD(location_end, location_end, location_end);
   return node;
 }
 
@@ -2021,6 +2024,8 @@ _readSelectStmt(OUT_TYPE(SelectStmt, SelectStmt) msg)
   READ_BOOL_FIELD(all, all, all);
   READ_SPECIFIC_NODE_PTR_FIELD(SelectStmt, select_stmt, larg, larg, larg);
   READ_SPECIFIC_NODE_PTR_FIELD(SelectStmt, select_stmt, rarg, rarg, rarg);
+  READ_INT_FIELD(location, location, location);
+  READ_INT_FIELD(location_end, location_end, location_end);
   return node;
 }
 

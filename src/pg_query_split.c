@@ -104,16 +104,16 @@ PgQuerySplitResult pg_query_split_with_scanner(const char* input)
         // Add statement up to the current position
         result.stmts[curstmt] = malloc(sizeof(PgQuerySplitStmt));
         result.stmts[curstmt]->stmt_location = stmtstart;
-        result.stmts[curstmt]->stmt_len = yylloc - stmtstart;
+        result.stmts[curstmt]->stmt_len = yylloc.start - stmtstart;
 
-        stmtstart = yylloc + 1;
+        stmtstart = yylloc.start + 1;
         keyword_before_terminator = false;
 
         curstmt++;
       }
       else if (open_parens == 0 && tok == ';') // Advance statement start in case we skip an empty statement
       {
-        stmtstart = yylloc + 1;
+        stmtstart = yylloc.start + 1;
       }
 
       if (tok == 0) break;

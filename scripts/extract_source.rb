@@ -5,6 +5,7 @@
 
 require 'ffi/clang'
 require 'json'
+require 'fileutils'
 
 module FFI::Clang::Lib
   enum :storage_class, [
@@ -219,7 +220,7 @@ class Runner
   end
 
   def analyze_file(file)
-    index = FFI::Clang::Index.new(true, true)
+    index = FFI::Clang::Index.new(exclude_declarations_from_pch: true, display_diagnostics: true)
     flags = [
       '-I', @basepath + 'src/include',
       '-I', '/usr/local/opt/openssl/include',

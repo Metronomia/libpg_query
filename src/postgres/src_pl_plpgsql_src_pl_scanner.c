@@ -232,7 +232,7 @@ plpgsql_yylex(void)
 						else
 							tok1 = T_CWORD;
 						/* Adjust token length to include A.B.C */
-						aux1.leng = aux5.lloc - aux1.lloc + aux5.leng;
+						aux1.leng = aux5.lloc.start - aux1.lloc.start + aux5.leng;
 					}
 					else
 					{
@@ -247,7 +247,7 @@ plpgsql_yylex(void)
 						else
 							tok1 = T_CWORD;
 						/* Adjust token length to include A.B */
-						aux1.leng = aux3.lloc - aux1.lloc + aux3.leng;
+						aux1.leng = aux3.lloc.start - aux1.lloc.start + aux3.leng;
 					}
 				}
 				else
@@ -262,7 +262,7 @@ plpgsql_yylex(void)
 					else
 						tok1 = T_CWORD;
 					/* Adjust token length to include A.B */
-					aux1.leng = aux3.lloc - aux1.lloc + aux3.leng;
+					aux1.leng = aux3.lloc.start - aux1.lloc.start + aux3.leng;
 				}
 			}
 			else
@@ -271,7 +271,7 @@ plpgsql_yylex(void)
 				push_back_token(tok3, &aux3);
 				push_back_token(tok2, &aux2);
 				if (plpgsql_parse_word(aux1.lval.str,
-									   core_yy.scanbuf + aux1.lloc,
+									   core_yy.scanbuf + aux1.lloc.start,
 									   true,
 									   &aux1.lval.wdatum,
 									   &aux1.lval.word))
@@ -311,7 +311,7 @@ plpgsql_yylex(void)
 			 * non-variable cases.
 			 */
 			if (plpgsql_parse_word(aux1.lval.str,
-								   core_yy.scanbuf + aux1.lloc,
+								   core_yy.scanbuf + aux1.lloc.start,
 								   (!AT_STMT_START(plpgsql_yytoken) ||
 									(tok2 == '=' || tok2 == COLON_EQUALS ||
 									 tok2 == '[')),
@@ -387,7 +387,7 @@ internal_yylex(TokenAuxData *auxdata)
 						   yyscanner);
 
 		/* remember the length of yytext before it gets changed */
-		yytext = core_yy.scanbuf + auxdata->lloc;
+		yytext = core_yy.scanbuf + auxdata->lloc.start;
 		auxdata->leng = strlen(yytext);
 
 		/* Check for << >> and #, which the core considers operators */
@@ -517,10 +517,10 @@ plpgsql_peek2(int *tok1_p, int *tok2_p, int *tok1_loc, int *tok2_loc)
 
 	*tok1_p = tok1;
 	if (tok1_loc)
-		*tok1_loc = aux1.lloc;
+		*tok1_loc = aux1.lloc.start;
 	*tok2_p = tok2;
 	if (tok2_loc)
-		*tok2_loc = aux2.lloc;
+		*tok2_loc = aux2.lloc.start;
 
 	push_back_token(tok2, &aux2);
 	push_back_token(tok1, &aux1);
@@ -567,7 +567,7 @@ plpgsql_scanner_errposition(int location)
 void
 plpgsql_yyerror(const char *message)
 {
-	char	   *yytext = core_yy.scanbuf + plpgsql_yylloc;
+	char	   *yytext = core_yy.scanbuf + plpgsql_yylloc.start;
 
 	if (*yytext == '\0')
 	{
@@ -575,7 +575,7 @@ plpgsql_yyerror(const char *message)
 				(errcode(ERRCODE_SYNTAX_ERROR),
 		/* translator: %s is typically the translation of "syntax error" */
 				 errmsg("%s at end of input", _(message)),
-				 plpgsql_scanner_errposition(plpgsql_yylloc)));
+				 plpgsql_scanner_errposition(plpgsql_yylloc.start)));
 	}
 	else
 	{
@@ -591,7 +591,7 @@ plpgsql_yyerror(const char *message)
 				(errcode(ERRCODE_SYNTAX_ERROR),
 		/* translator: first %s is typically the translation of "syntax error" */
 				 errmsg("%s at or near \"%s\"", _(message), yytext),
-				 plpgsql_scanner_errposition(plpgsql_yylloc)));
+				 plpgsql_scanner_errposition(plpgsql_yylloc.start)));
 	}
 }
 
