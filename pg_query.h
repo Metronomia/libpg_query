@@ -86,6 +86,12 @@ typedef struct {
 } PgQueryNormalizeResult;
 
 typedef struct {
+  char* quoted_identifier; // the identifier as it has to appear in SQL
+  bool needs_quotes;       // whether quoting was required to get there
+  PgQueryError* error;
+} PgQueryQuoteIdentifierResult;
+
+typedef struct {
 	PgQueryProtobuf summary;
 	char* stderr_buffer;
 	PgQueryError* error;
@@ -117,6 +123,10 @@ extern "C" {
 #endif
 
 PgQueryNormalizeResult pg_query_normalize(const char* input);
+/* Quote an identifier the way Postgres would, only if it needs it */
+PgQueryQuoteIdentifierResult pg_query_quote_identifier(const char* ident);
+/* Same decision, without building a string */
+bool pg_query_identifier_needs_quotes(const char* ident);
 PgQueryNormalizeResult pg_query_normalize_utility(const char* input);
 PgQueryScanResult pg_query_scan(const char* input);
 PgQueryParseResult pg_query_parse(const char* input);
@@ -150,6 +160,7 @@ PgQueryIsUtilityResult pg_query_is_utility_stmt(const char *query);
 PgQuerySummaryParseResult pg_query_summary(const char* input, int parser_options, int truncate_limit);
 
 void pg_query_free_normalize_result(PgQueryNormalizeResult result);
+void pg_query_free_quote_identifier_result(PgQueryQuoteIdentifierResult result);
 void pg_query_free_scan_result(PgQueryScanResult result);
 void pg_query_free_parse_result(PgQueryParseResult result);
 void pg_query_free_split_result(PgQuerySplitResult result);
