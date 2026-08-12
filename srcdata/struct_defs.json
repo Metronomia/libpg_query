@@ -650,6 +650,16 @@
           "name": "location_end",
           "c_type": "ParseLoc",
           "comment": "/* end of construct (excl), or -1 if unknown */"
+        },
+        {
+          "name": "outer_location",
+          "c_type": "ParseLoc",
+          "comment": "/* start of the whole construct, or -1 when location already starts it */"
+        },
+        {
+          "name": "outer_location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of the whole construct (excl), or -1 */"
         }
       ],
       "comment": "/*\n * FuncCall - a function or aggregate invocation\n *\n * agg_order (if not NIL) indicates we saw 'foo(... ORDER BY ...)', or if\n * agg_within_group is true, it was 'foo(...) WITHIN GROUP (ORDER BY ...)'.\n * agg_star indicates we saw a 'foo(*)' construct, while agg_distinct\n * indicates we saw 'foo(DISTINCT ...)'.  In any of these cases, the\n * construct *must* be an aggregate call.  Otherwise, it might be either an\n * aggregate or some other kind of function.  However, if FILTER or OVER is\n * present it had better be an aggregate or window function.\n *\n * Normally, you'd initialize this via makeFuncCall() and then only change the\n * parts of the struct its defaults don't match afterwards, as needed.\n */\n"
@@ -755,6 +765,11 @@
           "name": "location",
           "c_type": "ParseLoc",
           "comment": "/* token location, or -1 if unknown */"
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of construct (excl), or -1 if unknown */"
         }
       ],
       "comment": "/*\n * ResTarget -\n *\t  result target (used in target list of pre-transformed parse trees)\n *\n * In a SELECT target list, 'name' is the column label from an\n * 'AS ColumnLabel' clause, or NULL if there was none, and 'val' is the\n * value expression itself.  The 'indirection' field is not used.\n *\n * INSERT uses ResTarget in its target-column-names list.  Here, 'name' is\n * the name of the destination column, 'indirection' stores any subscripts\n * attached to the destination, and 'val' is not used.\n *\n * In an UPDATE target list, 'name' is the name of the destination column,\n * 'indirection' stores any subscripts attached to the destination, and\n * 'val' is the expression to assign.\n *\n * See A_Indirection for more info about what can appear in 'indirection'.\n */\n"
@@ -7409,6 +7424,16 @@
           "name": "colnames",
           "c_type": "List*",
           "comment": "/* optional list of column aliases */"
+        },
+        {
+          "name": "location",
+          "c_type": "ParseLoc",
+          "comment": "/* start of the alias name, or -1 if unknown */"
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of construct (excl), or -1 if unknown */"
         }
       ],
       "comment": "/*\n * Alias -\n *\t  specifies an alias for a range variable; the alias might also\n *\t  specify renaming of columns within the table.\n *\n * Note: colnames is a list of String nodes.  In Alias structs\n * associated with RTEs, there may be entries corresponding to dropped\n * columns; these are normally empty strings (\"\").  See parsenodes.h for info.\n */\n"

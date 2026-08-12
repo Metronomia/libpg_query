@@ -1,272 +1,24 @@
---- a/src/include/parser/scanner.h
-+++ b/src/include/parser/scanner.h
-@@ -36,13 +36,18 @@
- /*
-  * We track token locations in terms of byte offsets from the start of the
-  * source string, not the column number/line number representation that
-- * bison uses by default.  Also, to minimize overhead we track only one
-- * location (usually the first token location) for each construct, not
-- * the beginning and ending locations as bison does by default.  It's
-- * therefore sufficient to make YYLTYPE an int.
-+ * bison uses by default.  Unlike upstream Postgres, which tracks only the
-+ * start offset of each construct, we track both the start and the end, so
-+ * that callers can recover the exact source extent of a parse node.
-  */
--#define YYLTYPE  int
-+typedef struct core_YYLTYPE
-+{
-+	int			start;			/* byte offset of first token */
-+	int			end;			/* byte offset just past last token */
-+} core_YYLTYPE;
+--- a/src/backend/nodes/makefuncs.c
++++ b/src/backend/nodes/makefuncs.c
+@@ -439,6 +439,8 @@
  
-+#define YYLTYPE  core_YYLTYPE
-+
- /*
-  * Another important component of the scanner's API is the token code numbers.
-  * However, those are not defined in this file, because bison insists on
---- a/src/include/nodes/parsenodes.h
-+++ b/src/include/nodes/parsenodes.h
-@@ -293,6 +293,7 @@
- 	NodeTag		type;
- 	List	   *fields;			/* field names (String nodes) or A_Star */
- 	ParseLoc	location;		/* token location, or -1 if unknown */
-+	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
- } ColumnRef;
+ 	a->aliasname = pstrdup(aliasname);
+ 	a->colnames = colnames;
++	a->location = -1;
++	a->location_end = -1;
  
- /*
-@@ -434,6 +435,7 @@
- 	bool		func_variadic;	/* last argument was labeled VARIADIC */
- 	CoercionForm funcformat;	/* how to display this node */
- 	ParseLoc	location;		/* token location, or -1 if unknown */
-+	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
- } FuncCall;
- 
- /*
-@@ -2160,6 +2162,9 @@
- 	struct SelectStmt *larg;	/* left child */
- 	struct SelectStmt *rarg;	/* right child */
- 	/* Eventually add fields for CORRESPONDING spec here */
-+
-+	ParseLoc	location;		/* token location, or -1 if unknown */
-+	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
- } SelectStmt;
- 
- 
---- a/src/include/nodes/primnodes.h
-+++ b/src/include/nodes/primnodes.h
-@@ -92,6 +92,9 @@
- 
- 	/* token location, or -1 if unknown */
- 	ParseLoc	location;
-+
-+	/* end of the construct (exclusive), or -1 if unknown */
-+	ParseLoc	location_end;
- } RangeVar;
- 
- typedef enum TableFuncType
---- a/src/backend/parser/scan.l
-+++ b/src/backend/parser/scan.l
-@@ -102,12 +102,20 @@
-  * this should be done in the first such rule, else yylloc will point
-  * into the middle of the token.
-  */
--#define SET_YYLLOC()  (*(yylloc) = yytext - yyextra->scanbuf)
-+#define SET_YYLLOC()  (yylloc->start = yytext - yyextra->scanbuf, \
-+					   yylloc->end = yylloc->start + yyleng)
-+
-+/*
-+ * Record the true end of a token that spans several lexer rules.  The rules
-+ * that assemble such tokens already track the end offset in yyllocend (see
-+ * the lexer_track_yyllocend patch); this publishes it to the parser.
-+ */
-+#define SET_YYLLOCEND()  (yylloc->end = yyextra->yyllocend)
- 
- /*
-  * Advance yylloc by the given number of bytes.
-  */
--#define ADVANCE_YYLLOC(delta)  ( *(yylloc) += (delta) )
-+#define ADVANCE_YYLLOC(delta)  ( yylloc->start += (delta) )
- 
- /*
-  * Sometimes, we do want yylloc to point into the middle of a token; this is
-@@ -131,7 +139,7 @@
- 
- #define yyerror(msg)  scanner_yyerror(msg, yyscanner)
- 
--#define lexer_errposition()  scanner_errposition(*(yylloc), yyscanner)
-+#define lexer_errposition()  scanner_errposition(yylloc->start, yyscanner)
- 
- static void check_string_escape_warning(unsigned char ychar, core_yyscan_t yyscanner);
- static void check_escape_warning(core_yyscan_t yyscanner);
-@@ -482,7 +490,7 @@
- 					if (yyextra->xcdepth <= 0)
- 					{
- 						BEGIN(INITIAL);
--						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
-+						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
- 						return C_COMMENT;
- 					}
- 					else
-@@ -560,7 +568,7 @@
- 					{
- 						/* If NCHAR isn't a keyword, just return "n" */
- 						yylval->str = pstrdup("n");
--						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
-+						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
- 						return IDENT;
- 					}
- 				}
-@@ -629,11 +637,11 @@
- 					{
- 						case xb:
- 							yylval->str = litbufdup(yyscanner);
--							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
-+							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
- 							return BCONST;
- 						case xh:
- 							yylval->str = litbufdup(yyscanner);
--							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
-+							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
- 							return XCONST;
- 						case xq:
- 						case xe:
-@@ -646,11 +654,11 @@
- 											   yyextra->literallen,
- 											   false);
- 							yylval->str = litbufdup(yyscanner);
--							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
-+							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
- 							return SCONST;
- 						case xus:
- 							yylval->str = litbufdup(yyscanner);
--							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
-+							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
- 							return USCONST;
- 						default:
- 							yyerror("unhandled previous state in xqs");
-@@ -788,7 +796,7 @@
- 						yyextra->dolqstart = NULL;
- 						BEGIN(INITIAL);
- 						yylval->str = litbufdup(yyscanner);
--						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
-+						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
- 						return SCONST;
- 					}
- 					else
-@@ -834,7 +842,7 @@
- 					if (yyextra->literallen >= NAMEDATALEN)
- 						truncate_identifier(ident, yyextra->literallen, true);
- 					yylval->str = ident;
--					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
-+					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
- 					return IDENT;
- 				}
- <xui>{dquote}	{
-@@ -843,7 +851,7 @@
- 						yyerror("zero-length delimited identifier");
- 					/* can't truncate till after we de-escape the ident */
- 					yylval->str = litbufdup(yyscanner);
--					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
-+					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
- 					return UIDENT;
- 				}
- <xd,xui>{xddouble}	{
-@@ -863,7 +871,7 @@
- 					/* and treat it as {identifier} */
- 					ident = downcase_truncate_identifier(yytext, yyleng, true);
- 					yylval->str = ident;
--					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
-+					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
- 					return IDENT;
- 				}
- 
-@@ -1112,7 +1120,7 @@
- 					 */
- 					ident = downcase_truncate_identifier(yytext, yyleng, true);
- 					yylval->str = ident;
--					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
-+					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
- 					return IDENT;
- 				}
- 
-@@ -1243,7 +1251,7 @@
- void
- scanner_yyerror(const char *message, core_yyscan_t yyscanner)
- {
--	const char *loc = yyextra->scanbuf + *yylloc;
-+	const char *loc = yyextra->scanbuf + yylloc->start;
- 
- 	if (*loc == YY_END_OF_BUFFER_CHAR)
- 	{
-@@ -1410,7 +1418,7 @@
- 	 * We expect that pg_unicode_to_server() will complain about any
- 	 * unconvertible code point, so we don't have to set saw_non_ascii.
- 	 */
--	setup_scanner_errposition_callback(&scbstate, yyscanner, *(yylloc));
-+	setup_scanner_errposition_callback(&scbstate, yyscanner, yylloc->start);
- 	pg_unicode_to_server(c, (unsigned char *) buf);
- 	cancel_scanner_errposition_callback(&scbstate);
- 	addlit(buf, strlen(buf), yyscanner);
---- a/src/backend/parser/parser.c
-+++ b/src/backend/parser/parser.c
-@@ -66,7 +66,8 @@
- 
- 		yyextra.have_lookahead = true;
- 		yyextra.lookahead_token = mode_token[mode];
--		yyextra.lookahead_yylloc = 0;
-+		yyextra.lookahead_yylloc.start = 0;
-+		yyextra.lookahead_yylloc.end = 0;
- 		yyextra.lookahead_end = NULL;
- 	}
- 
-@@ -151,7 +152,7 @@
- 			break;
- 		case UIDENT:
- 		case USCONST:
--			cur_token_length = strlen(yyextra->core_yy_extra.scanbuf + *llocp);
-+			cur_token_length = strlen(yyextra->core_yy_extra.scanbuf + llocp->start);
- 			break;
- 		case WITHOUT:
- 			cur_token_length = 7;
-@@ -169,7 +170,7 @@
- 	 * it to fully revert the lookahead call for error reporting purposes.
- 	 */
- 	yyextra->lookahead_end = yyextra->core_yy_extra.scanbuf +
--		*llocp + cur_token_length;
-+		llocp->start + cur_token_length;
- 	Assert(*(yyextra->lookahead_end) == '\0');
- 
- 	/*
-@@ -281,14 +282,19 @@
- 					scanner_yyerror("invalid Unicode escape character",
- 									yyscanner);
- 
--				/* Now restore *llocp; errors will point to first token */
-+				/*
-+				 * Now restore *llocp; errors will point to first token.
-+				 * All three tokens are consumed as one, so the extent has
-+				 * to run through the end of the third one.
-+				 */
-+				cur_yylloc.end = llocp->end;
- 				*llocp = cur_yylloc;
- 
- 				/* Apply Unicode conversion */
- 				lvalp->core_yystype.str =
- 					str_udeescape(lvalp->core_yystype.str,
- 								  escstr[0],
--								  *llocp,
-+								  llocp->start,
- 								  yyscanner);
- 
- 				/*
-@@ -304,7 +310,7 @@
- 				lvalp->core_yystype.str =
- 					str_udeescape(lvalp->core_yystype.str,
- 								  '\\',
--								  *llocp,
-+								  llocp->start,
- 								  yyscanner);
- 			}
+ 	return a;
+ }
+@@ -662,6 +664,10 @@
+ 	n->func_variadic = false;
+ 	n->funcformat = funcformat;
+ 	n->location = location;
++	n->location_end = -1;
++	/* nodeExtent fills these in when the construct starts before location */
++	n->outer_location = -1;
++	n->outer_location_end = -1;
+ 	return n;
+ }
  
 --- a/src/backend/parser/gram.y
 +++ b/src/backend/parser/gram.y
@@ -426,9 +178,10 @@
 +						$$ = makeDefElem("superuser", (Node *) makeBoolean(true), @1.start);
  					else if (strcmp($1, "nosuperuser") == 0)
 -						$$ = makeDefElem("superuser", (Node *) makeBoolean(false), @1);
-+						$$ = makeDefElem("superuser", (Node *) makeBoolean(false), @1.start);
- 					else if (strcmp($1, "createrole") == 0)
+-					else if (strcmp($1, "createrole") == 0)
 -						$$ = makeDefElem("createrole", (Node *) makeBoolean(true), @1);
++						$$ = makeDefElem("superuser", (Node *) makeBoolean(false), @1.start);
++					else if (strcmp($1, "createrole") == 0)
 +						$$ = makeDefElem("createrole", (Node *) makeBoolean(true), @1.start);
  					else if (strcmp($1, "nocreaterole") == 0)
 -						$$ = makeDefElem("createrole", (Node *) makeBoolean(false), @1);
@@ -1934,10 +1687,9 @@
  
  operator_def_elem: ColLabel '=' NONE
 -						{ $$ = makeDefElem($1, NULL, @1); }
--				   | ColLabel '=' operator_def_arg
--						{ $$ = makeDefElem($1, (Node *) $3, @1); }
 +						{ $$ = makeDefElem($1, NULL, @1.start); }
-+				   | ColLabel '=' operator_def_arg
+ 				   | ColLabel '=' operator_def_arg
+-						{ $$ = makeDefElem($1, (Node *) $3, @1); }
 +						{ $$ = makeDefElem($1, (Node *) $3, @1.start); }
  				   | ColLabel
 -						{ $$ = makeDefElem($1, NULL, @1); }
@@ -2276,16 +2028,30 @@
  						$$ = (Node *) n;
  					}
  				| DEALLOCATE ALL
-@@ -12260,7 +12280,7 @@
+@@ -12201,7 +12221,11 @@
+ 				}
+ 			| qualified_name AS ColId
+ 				{
+-					$1->alias = makeAlias($3, NIL);
++					Alias	   *alias = makeAlias($3, NIL);
++
++					alias->location = @3.start;
++					alias->location_end = @3.end;
++					$1->alias = alias;
+ 					$$ = $1;
+ 				}
+ 		;
+@@ -12260,7 +12284,8 @@
  					$$->name = $1;
  					$$->indirection = check_indirection($2, yyscanner);
  					$$->val = NULL;
 -					$$->location = @1;
 +					$$->location = @1.start;
++					$$->location_end = @$.end;
  				}
  		;
  
-@@ -12272,7 +12292,7 @@
+@@ -12272,7 +12297,7 @@
  					$$->infer = $3;
  					$$->targetList = $7;
  					$$->whereClause = $8;
@@ -2294,7 +2060,7 @@
  				}
  			|
  			ON CONFLICT opt_conf_expr DO NOTHING
-@@ -12282,7 +12302,7 @@
+@@ -12282,7 +12307,7 @@
  					$$->infer = $3;
  					$$->targetList = NIL;
  					$$->whereClause = NULL;
@@ -2303,7 +2069,7 @@
  				}
  			| /*EMPTY*/
  				{
-@@ -12297,7 +12317,7 @@
+@@ -12297,7 +12322,7 @@
  					$$->indexElems = $2;
  					$$->whereClause = $4;
  					$$->conname = NULL;
@@ -2312,7 +2078,7 @@
  				}
  			|
  			ON CONSTRAINT name
-@@ -12306,7 +12326,7 @@
+@@ -12306,7 +12331,7 @@
  					$$->indexElems = NIL;
  					$$->whereClause = NULL;
  					$$->conname = $3;
@@ -2321,16 +2087,17 @@
  				}
  			| /*EMPTY*/
  				{
-@@ -12456,7 +12476,7 @@
+@@ -12456,7 +12481,8 @@
  					$$->name = $1;
  					$$->indirection = check_indirection($2, yyscanner);
  					$$->val = NULL;	/* upper production sets this */
 -					$$->location = @1;
 +					$$->location = @1.start;
++					$$->location_end = @$.end;
  				}
  		;
  
-@@ -12750,7 +12770,7 @@
+@@ -12750,7 +12776,7 @@
  					insertSelectOptions((SelectStmt *) $1, $2, NIL,
  										NULL, NULL,
  										yyscanner);
@@ -2339,7 +2106,7 @@
  				}
  			| select_clause opt_sort_clause for_locking_clause opt_select_limit
  				{
-@@ -12758,7 +12778,7 @@
+@@ -12758,7 +12784,7 @@
  										$4,
  										NULL,
  										yyscanner);
@@ -2348,7 +2115,7 @@
  				}
  			| select_clause opt_sort_clause select_limit opt_for_locking_clause
  				{
-@@ -12766,7 +12786,7 @@
+@@ -12766,7 +12792,7 @@
  										$3,
  										NULL,
  										yyscanner);
@@ -2357,7 +2124,7 @@
  				}
  			| with_clause select_clause
  				{
-@@ -12774,7 +12794,7 @@
+@@ -12774,7 +12800,7 @@
  										NULL,
  										$1,
  										yyscanner);
@@ -2366,7 +2133,7 @@
  				}
  			| with_clause select_clause sort_clause
  				{
-@@ -12782,7 +12802,7 @@
+@@ -12782,7 +12808,7 @@
  										NULL,
  										$1,
  										yyscanner);
@@ -2375,7 +2142,7 @@
  				}
  			| with_clause select_clause opt_sort_clause for_locking_clause opt_select_limit
  				{
-@@ -12790,7 +12810,7 @@
+@@ -12790,7 +12816,7 @@
  										$5,
  										$1,
  										yyscanner);
@@ -2384,7 +2151,7 @@
  				}
  			| with_clause select_clause opt_sort_clause select_limit opt_for_locking_clause
  				{
-@@ -12798,7 +12818,7 @@
+@@ -12798,7 +12824,7 @@
  										$4,
  										$1,
  										yyscanner);
@@ -2393,7 +2160,7 @@
  				}
  		;
  
-@@ -12850,7 +12870,7 @@
+@@ -12850,7 +12876,7 @@
  					n->groupDistinct = ($7)->distinct;
  					n->havingClause = $8;
  					n->windowClause = $9;
@@ -2402,7 +2169,7 @@
  				}
  			| SELECT distinct_clause target_list
  			into_clause from_clause where_clause
-@@ -12867,7 +12887,7 @@
+@@ -12867,7 +12893,7 @@
  					n->groupDistinct = ($7)->distinct;
  					n->havingClause = $8;
  					n->windowClause = $9;
@@ -2411,7 +2178,17 @@
  				}
  			| values_clause							{ $$ = $1; }
  			| TABLE relation_expr
-@@ -12887,19 +12907,19 @@
+@@ -12879,27 +12905,29 @@
+ 
+ 					cr->fields = list_make1(makeNode(A_Star));
+ 					cr->location = -1;
++					cr->location_end = -1;
+ 
+ 					rt->name = NULL;
+ 					rt->indirection = NIL;
+ 					rt->val = (Node *) cr;
+ 					rt->location = -1;
++					rt->location_end = -1;
  
  					n->targetList = list_make1(rt);
  					n->fromClause = list_make1($2);
@@ -2435,7 +2212,7 @@
  				}
  		;
  
-@@ -12917,21 +12937,21 @@
+@@ -12917,21 +12945,21 @@
  				$$ = makeNode(WithClause);
  				$$->ctes = $2;
  				$$->recursive = false;
@@ -2460,7 +2237,7 @@
  			}
  		;
  
-@@ -12950,7 +12970,7 @@
+@@ -12950,7 +12978,7 @@
  				n->ctequery = $6;
  				n->search_clause = castNode(CTESearchClause, $8);
  				n->cycle_clause = castNode(CTECycleClause, $9);
@@ -2469,7 +2246,7 @@
  				$$ = (Node *) n;
  			}
  		;
-@@ -12969,7 +12989,7 @@
+@@ -12969,7 +12997,7 @@
  				n->search_col_list = $5;
  				n->search_breadth_first = false;
  				n->search_seq_column = $7;
@@ -2478,7 +2255,7 @@
  				$$ = (Node *) n;
  			}
  		| SEARCH BREADTH FIRST_P BY columnList SET ColId
-@@ -12979,7 +12999,7 @@
+@@ -12979,7 +13007,7 @@
  				n->search_col_list = $5;
  				n->search_breadth_first = true;
  				n->search_seq_column = $7;
@@ -2487,7 +2264,7 @@
  				$$ = (Node *) n;
  			}
  		| /*EMPTY*/
-@@ -12998,7 +13018,7 @@
+@@ -12998,7 +13026,7 @@
  				n->cycle_mark_value = $6;
  				n->cycle_mark_default = $8;
  				n->cycle_path_column = $10;
@@ -2496,7 +2273,7 @@
  				$$ = (Node *) n;
  			}
  		| CYCLE columnList SET ColId USING ColId
-@@ -13010,7 +13030,7 @@
+@@ -13010,7 +13038,7 @@
  				n->cycle_mark_value = makeBoolAConst(true, -1);
  				n->cycle_mark_default = makeBoolAConst(false, -1);
  				n->cycle_path_column = $6;
@@ -2505,7 +2282,7 @@
  				$$ = (Node *) n;
  			}
  		| /*EMPTY*/
-@@ -13069,7 +13089,7 @@
+@@ -13069,7 +13097,7 @@
  				{
  					ereport(WARNING,
  							(errmsg("GLOBAL is deprecated in temporary table creation"),
@@ -2514,7 +2291,7 @@
  					$$ = $4;
  					$$->relpersistence = RELPERSISTENCE_TEMP;
  				}
-@@ -13077,7 +13097,7 @@
+@@ -13077,7 +13105,7 @@
  				{
  					ereport(WARNING,
  							(errmsg("GLOBAL is deprecated in temporary table creation"),
@@ -2523,7 +2300,7 @@
  					$$ = $4;
  					$$->relpersistence = RELPERSISTENCE_TEMP;
  				}
-@@ -13147,7 +13167,7 @@
+@@ -13147,7 +13175,7 @@
  					$$->sortby_dir = SORTBY_USING;
  					$$->sortby_nulls = $4;
  					$$->useOp = $3;
@@ -2532,7 +2309,7 @@
  				}
  			| a_expr opt_asc_desc opt_nulls_order
  				{
-@@ -13209,7 +13229,7 @@
+@@ -13209,7 +13237,7 @@
  							(errcode(ERRCODE_SYNTAX_ERROR),
  							 errmsg("LIMIT #,# syntax is not supported"),
  							 errhint("Use separate LIMIT and OFFSET clauses."),
@@ -2541,7 +2318,7 @@
  				}
  			/* SQL:2008 syntax */
  			/* to avoid shift/reduce conflicts, handle the optional value with
-@@ -13269,7 +13289,7 @@
+@@ -13269,7 +13297,7 @@
  			| ALL
  				{
  					/* LIMIT ALL is represented as a NULL constant */
@@ -2550,7 +2327,7 @@
  				}
  		;
  
-@@ -13296,14 +13316,14 @@
+@@ -13296,14 +13324,14 @@
  select_fetch_first_value:
  			c_expr									{ $$ = $1; }
  			| '+' I_or_F_const
@@ -2569,7 +2346,7 @@
  		;
  
  /* noise words */
-@@ -13371,7 +13391,7 @@
+@@ -13371,7 +13399,7 @@
  empty_grouping_set:
  			'(' ')'
  				{
@@ -2578,7 +2355,7 @@
  				}
  		;
  
-@@ -13384,21 +13404,21 @@
+@@ -13384,21 +13412,21 @@
  rollup_clause:
  			ROLLUP '(' expr_list ')'
  				{
@@ -2603,7 +2380,7 @@
  				}
  		;
  
-@@ -13458,7 +13478,7 @@
+@@ -13458,7 +13486,7 @@
  					SelectStmt *n = makeNode(SelectStmt);
  
  					n->valuesLists = list_make1($3);
@@ -2612,7 +2389,83 @@
  				}
  			| values_clause ',' '(' expr_list ')'
  				{
-@@ -13890,7 +13910,7 @@
+@@ -13696,22 +13724,30 @@
+ 					$$ = makeNode(Alias);
+ 					$$->aliasname = $2;
+ 					$$->colnames = $4;
++					$$->location = @2.start;
++					$$->location_end = @$.end;
+ 				}
+ 			| AS ColId
+ 				{
+ 					$$ = makeNode(Alias);
+ 					$$->aliasname = $2;
++					$$->location = @2.start;
++					$$->location_end = @$.end;
+ 				}
+ 			| ColId '(' name_list ')'
+ 				{
+ 					$$ = makeNode(Alias);
+ 					$$->aliasname = $1;
+ 					$$->colnames = $3;
++					$$->location = @1.start;
++					$$->location_end = @$.end;
+ 				}
+ 			| ColId
+ 				{
+ 					$$ = makeNode(Alias);
+ 					$$->aliasname = $1;
++					$$->location = @1.start;
++					$$->location_end = @$.end;
+ 				}
+ 		;
+ 
+@@ -13730,6 +13766,8 @@
+ 				{
+ 					$$ = makeNode(Alias);
+ 					$$->aliasname = $2;
++					$$->location = @2.start;
++					$$->location_end = @2.end;
+ 					/* the column name list will be inserted later */
+ 				}
+ 			| /*EMPTY*/								{ $$ = NULL; }
+@@ -13753,6 +13791,8 @@
+ 					Alias	   *a = makeNode(Alias);
+ 
+ 					a->aliasname = $2;
++					a->location = @2.start;
++					a->location_end = @2.end;
+ 					$$ = list_make2(a, $4);
+ 				}
+ 			| ColId '(' TableFuncElementList ')'
+@@ -13760,6 +13800,8 @@
+ 					Alias	   *a = makeNode(Alias);
+ 
+ 					a->aliasname = $1;
++					a->location = @1.start;
++					a->location_end = @1.end;
+ 					$$ = list_make2(a, $3);
+ 				}
+ 			| /*EMPTY*/
+@@ -13865,6 +13907,8 @@
+ 					Alias	   *alias = makeNode(Alias);
+ 
+ 					alias->aliasname = $2;
++					alias->location = @2.start;
++					alias->location_end = @2.end;
+ 					$1->alias = alias;
+ 					$$ = $1;
+ 				}
+@@ -13873,6 +13917,8 @@
+ 					Alias	   *alias = makeNode(Alias);
+ 
+ 					alias->aliasname = $3;
++					alias->location = @3.start;
++					alias->location_end = @3.end;
+ 					$1->alias = alias;
+ 					$$ = $1;
+ 				}
+@@ -13890,7 +13936,7 @@
  					n->method = $2;
  					n->args = $4;
  					n->repeatable = $6;
@@ -2621,7 +2474,7 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -14007,7 +14027,7 @@
+@@ -14007,7 +14053,7 @@
  					n->collClause = (CollateClause *) $3;
  					n->collOid = InvalidOid;
  					n->constraints = NIL;
@@ -2630,7 +2483,7 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -14024,7 +14044,7 @@
+@@ -14024,7 +14070,7 @@
  					n->docexpr = $4;
  					n->columns = $6;
  					n->namespaces = NIL;
@@ -2639,7 +2492,7 @@
  					$$ = (Node *) n;
  				}
  			| XMLTABLE '(' XMLNAMESPACES '(' xml_namespace_list ')' ','
-@@ -14036,7 +14056,7 @@
+@@ -14036,7 +14082,7 @@
  					n->docexpr = $9;
  					n->columns = $11;
  					n->namespaces = $5;
@@ -2648,7 +2501,7 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -14056,7 +14076,7 @@
+@@ -14056,7 +14102,7 @@
  					fc->is_not_null = false;
  					fc->colexpr = NULL;
  					fc->coldefexpr = NULL;
@@ -2657,7 +2510,7 @@
  
  					$$ = (Node *) fc;
  				}
-@@ -14072,7 +14092,7 @@
+@@ -14072,7 +14118,7 @@
  					fc->is_not_null = false;
  					fc->colexpr = NULL;
  					fc->coldefexpr = NULL;
@@ -2666,7 +2519,7 @@
  
  					foreach(option, $3)
  					{
-@@ -14124,7 +14144,7 @@
+@@ -14124,7 +14170,7 @@
  					fc->colname = $1;
  					fc->for_ordinality = true;
  					/* other fields are ignored, initialized by makeNode */
@@ -2675,7 +2528,7 @@
  
  					$$ = (Node *) fc;
  				}
-@@ -14144,17 +14164,17 @@
+@@ -14144,17 +14190,17 @@
  						ereport(ERROR,
  								(errcode(ERRCODE_SYNTAX_ERROR),
  								 errmsg("option name \"%s\" cannot be used in XMLTABLE", $1),
@@ -2699,25 +2552,27 @@
  		;
  
  xml_namespace_list:
-@@ -14171,7 +14191,7 @@
+@@ -14171,7 +14217,8 @@
  					$$->name = $3;
  					$$->indirection = NIL;
  					$$->val = $1;
 -					$$->location = @1;
 +					$$->location = @1.start;
++					$$->location_end = @$.end;
  				}
  			| DEFAULT b_expr
  				{
-@@ -14179,7 +14199,7 @@
+@@ -14179,7 +14226,8 @@
  					$$->name = NULL;
  					$$->indirection = NIL;
  					$$->val = $2;
 -					$$->location = @1;
 +					$$->location = @1.start;
++					$$->location_end = @$.end;
  				}
  		;
  
-@@ -14200,13 +14220,13 @@
+@@ -14200,13 +14248,13 @@
  						ereport(ERROR,
  								errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
  								errmsg("only string constants are supported in JSON_TABLE path specification"),
@@ -2734,7 +2589,7 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -14230,7 +14250,7 @@
+@@ -14230,7 +14278,7 @@
  
  					n->coltype = JTC_FOR_ORDINALITY;
  					n->name = $1;
@@ -2743,7 +2598,7 @@
  					$$ = (Node *) n;
  				}
  			| ColId Typename
-@@ -14250,7 +14270,7 @@
+@@ -14250,7 +14298,7 @@
  					n->quotes = $5;
  					n->on_empty = (JsonBehavior *) linitial($6);
  					n->on_error = (JsonBehavior *) lsecond($6);
@@ -2752,7 +2607,7 @@
  					$$ = (Node *) n;
  				}
  			| ColId Typename json_format_clause
-@@ -14270,7 +14290,7 @@
+@@ -14270,7 +14318,7 @@
  					n->quotes = $6;
  					n->on_empty = (JsonBehavior *) linitial($7);
  					n->on_error = (JsonBehavior *) lsecond($7);
@@ -2761,7 +2616,7 @@
  					$$ = (Node *) n;
  				}
  			| ColId Typename
-@@ -14288,7 +14308,7 @@
+@@ -14288,7 +14336,7 @@
  					n->pathspec = (JsonTablePathSpec *) $4;
  					n->on_empty = NULL;
  					n->on_error = (JsonBehavior *) $5;
@@ -2770,7 +2625,7 @@
  					$$ = (Node *) n;
  				}
  			| NESTED path_opt Sconst
-@@ -14298,9 +14318,9 @@
+@@ -14298,9 +14346,9 @@
  
  					n->coltype = JTC_NESTED;
  					n->pathspec = (JsonTablePathSpec *)
@@ -2782,7 +2637,7 @@
  					$$ = (Node *) n;
  				}
  			| NESTED path_opt Sconst AS name
-@@ -14310,9 +14330,9 @@
+@@ -14310,9 +14358,9 @@
  
  					n->coltype = JTC_NESTED;
  					n->pathspec = (JsonTablePathSpec *)
@@ -2794,7 +2649,7 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -14324,7 +14344,7 @@
+@@ -14324,7 +14372,7 @@
  
  json_table_column_path_clause_opt:
  			PATH Sconst
@@ -2803,7 +2658,7 @@
  			| /* EMPTY */
  				{ $$ = NULL; }
  		;
-@@ -14399,7 +14419,7 @@
+@@ -14399,7 +14447,7 @@
  				{
  					$$ = $1;
  					$$->typmods = list_make2(makeIntConst(INTERVAL_FULL_RANGE, -1),
@@ -2812,7 +2667,7 @@
  				}
  			| JsonType								{ $$ = $1; }
  		;
-@@ -14435,13 +14455,13 @@
+@@ -14435,13 +14483,13 @@
  				{
  					$$ = makeTypeName($1);
  					$$->typmods = $2;
@@ -2828,7 +2683,7 @@
  				}
  		;
  
-@@ -14455,60 +14475,60 @@
+@@ -14455,60 +14503,60 @@
  Numeric:	INT_P
  				{
  					$$ = SystemTypeName("int4");
@@ -2900,7 +2755,7 @@
  				}
  		;
  
-@@ -14522,7 +14542,7 @@
+@@ -14522,7 +14570,7 @@
  						ereport(ERROR,
  								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
  								 errmsg("precision for type float must be at least 1 bit"),
@@ -2909,7 +2764,7 @@
  					else if ($2 <= 24)
  						$$ = SystemTypeName("float4");
  					else if ($2 <= 53)
-@@ -14531,7 +14551,7 @@
+@@ -14531,7 +14579,7 @@
  						ereport(ERROR,
  								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
  								 errmsg("precision for type float must be less than 54 bits"),
@@ -2918,7 +2773,7 @@
  				}
  			| /*EMPTY*/
  				{
-@@ -14574,7 +14594,7 @@
+@@ -14574,7 +14622,7 @@
  					typname = $2 ? "varbit" : "bit";
  					$$ = SystemTypeName(typname);
  					$$->typmods = $4;
@@ -2927,7 +2782,7 @@
  				}
  		;
  
-@@ -14591,7 +14611,7 @@
+@@ -14591,7 +14639,7 @@
  						$$ = SystemTypeName("bit");
  						$$->typmods = list_make1(makeIntConst(1, -1));
  					}
@@ -2936,7 +2791,7 @@
  				}
  		;
  
-@@ -14630,8 +14650,8 @@
+@@ -14630,8 +14678,8 @@
  CharacterWithLength:  character '(' Iconst ')'
  				{
  					$$ = SystemTypeName($1);
@@ -2947,7 +2802,7 @@
  				}
  		;
  
-@@ -14641,7 +14661,7 @@
+@@ -14641,7 +14689,7 @@
  					/* char defaults to char(1), varchar to no limit */
  					if (strcmp($1, "bpchar") == 0)
  						$$->typmods = list_make1(makeIntConst(1, -1));
@@ -2956,7 +2811,7 @@
  				}
  		;
  
-@@ -14674,8 +14694,8 @@
+@@ -14674,8 +14722,8 @@
  						$$ = SystemTypeName("timestamptz");
  					else
  						$$ = SystemTypeName("timestamp");
@@ -2967,7 +2822,7 @@
  				}
  			| TIMESTAMP opt_timezone
  				{
-@@ -14683,7 +14703,7 @@
+@@ -14683,7 +14731,7 @@
  						$$ = SystemTypeName("timestamptz");
  					else
  						$$ = SystemTypeName("timestamp");
@@ -2976,7 +2831,7 @@
  				}
  			| TIME '(' Iconst ')' opt_timezone
  				{
-@@ -14691,8 +14711,8 @@
+@@ -14691,8 +14739,8 @@
  						$$ = SystemTypeName("timetz");
  					else
  						$$ = SystemTypeName("time");
@@ -2987,7 +2842,7 @@
  				}
  			| TIME opt_timezone
  				{
-@@ -14700,7 +14720,7 @@
+@@ -14700,7 +14748,7 @@
  						$$ = SystemTypeName("timetz");
  					else
  						$$ = SystemTypeName("time");
@@ -2996,7 +2851,7 @@
  				}
  		;
  
-@@ -14708,7 +14728,7 @@
+@@ -14708,7 +14756,7 @@
  			INTERVAL
  				{
  					$$ = SystemTypeName("interval");
@@ -3005,7 +2860,7 @@
  				}
  		;
  
-@@ -14720,32 +14740,32 @@
+@@ -14720,32 +14768,32 @@
  
  opt_interval:
  			YEAR_P
@@ -3046,7 +2901,7 @@
  				}
  			| DAY_P TO interval_second
  				{
-@@ -14753,25 +14773,25 @@
+@@ -14753,25 +14801,25 @@
  					linitial($$) = makeIntConst(INTERVAL_MASK(DAY) |
  												INTERVAL_MASK(HOUR) |
  												INTERVAL_MASK(MINUTE) |
@@ -3076,7 +2931,7 @@
  				}
  			| /*EMPTY*/
  				{ $$ = NIL; }
-@@ -14780,12 +14800,12 @@
+@@ -14780,12 +14828,12 @@
  interval_second:
  			SECOND_P
  				{
@@ -3092,7 +2947,7 @@
  				}
  		;
  
-@@ -14793,7 +14813,7 @@
+@@ -14793,7 +14841,7 @@
  			JSON
  				{
  					$$ = SystemTypeName("json");
@@ -3101,7 +2956,7 @@
  				}
  		;
  
-@@ -14827,29 +14847,29 @@
+@@ -14827,29 +14875,29 @@
   */
  a_expr:		c_expr									{ $$ = $1; }
  			| a_expr TYPECAST Typename
@@ -3137,7 +2992,7 @@
  				}
  		/*
  		 * These operators must be called out explicitly in order to make use
-@@ -14861,140 +14881,140 @@
+@@ -14861,140 +14909,140 @@
  		 * also to b_expr and to the MathOp list below.
  		 */
  			| '+' a_expr					%prec UMINUS
@@ -3326,7 +3181,7 @@
  				}
  
  			/* NullTest clause
-@@ -15012,7 +15032,7 @@
+@@ -15012,7 +15060,7 @@
  
  					n->arg = (Expr *) $1;
  					n->nulltesttype = IS_NULL;
@@ -3335,7 +3190,7 @@
  					$$ = (Node *) n;
  				}
  			| a_expr ISNULL
-@@ -15021,7 +15041,7 @@
+@@ -15021,7 +15069,7 @@
  
  					n->arg = (Expr *) $1;
  					n->nulltesttype = IS_NULL;
@@ -3344,7 +3199,7 @@
  					$$ = (Node *) n;
  				}
  			| a_expr IS NOT NULL_P						%prec IS
-@@ -15030,7 +15050,7 @@
+@@ -15030,7 +15078,7 @@
  
  					n->arg = (Expr *) $1;
  					n->nulltesttype = IS_NOT_NULL;
@@ -3353,7 +3208,7 @@
  					$$ = (Node *) n;
  				}
  			| a_expr NOTNULL
-@@ -15039,7 +15059,7 @@
+@@ -15039,7 +15087,7 @@
  
  					n->arg = (Expr *) $1;
  					n->nulltesttype = IS_NOT_NULL;
@@ -3362,7 +3217,7 @@
  					$$ = (Node *) n;
  				}
  			| row OVERLAPS row
-@@ -15048,16 +15068,16 @@
+@@ -15048,16 +15096,16 @@
  						ereport(ERROR,
  								(errcode(ERRCODE_SYNTAX_ERROR),
  								 errmsg("wrong number of parameters on left side of OVERLAPS expression"),
@@ -3383,7 +3238,7 @@
  				}
  			| a_expr IS TRUE_P							%prec IS
  				{
-@@ -15065,7 +15085,7 @@
+@@ -15065,7 +15113,7 @@
  
  					b->arg = (Expr *) $1;
  					b->booltesttype = IS_TRUE;
@@ -3392,7 +3247,7 @@
  					$$ = (Node *) b;
  				}
  			| a_expr IS NOT TRUE_P						%prec IS
-@@ -15074,7 +15094,7 @@
+@@ -15074,7 +15122,7 @@
  
  					b->arg = (Expr *) $1;
  					b->booltesttype = IS_NOT_TRUE;
@@ -3401,7 +3256,7 @@
  					$$ = (Node *) b;
  				}
  			| a_expr IS FALSE_P							%prec IS
-@@ -15083,7 +15103,7 @@
+@@ -15083,7 +15131,7 @@
  
  					b->arg = (Expr *) $1;
  					b->booltesttype = IS_FALSE;
@@ -3410,7 +3265,7 @@
  					$$ = (Node *) b;
  				}
  			| a_expr IS NOT FALSE_P						%prec IS
-@@ -15092,7 +15112,7 @@
+@@ -15092,7 +15140,7 @@
  
  					b->arg = (Expr *) $1;
  					b->booltesttype = IS_NOT_FALSE;
@@ -3419,7 +3274,7 @@
  					$$ = (Node *) b;
  				}
  			| a_expr IS UNKNOWN							%prec IS
-@@ -15101,7 +15121,7 @@
+@@ -15101,7 +15149,7 @@
  
  					b->arg = (Expr *) $1;
  					b->booltesttype = IS_UNKNOWN;
@@ -3428,7 +3283,7 @@
  					$$ = (Node *) b;
  				}
  			| a_expr IS NOT UNKNOWN						%prec IS
-@@ -15110,16 +15130,16 @@
+@@ -15110,16 +15158,16 @@
  
  					b->arg = (Expr *) $1;
  					b->booltesttype = IS_NOT_UNKNOWN;
@@ -3448,7 +3303,7 @@
  				}
  			| a_expr BETWEEN opt_asymmetric b_expr AND a_expr		%prec BETWEEN
  				{
-@@ -15127,7 +15147,7 @@
+@@ -15127,7 +15175,7 @@
  												   "BETWEEN",
  												   $1,
  												   (Node *) list_make2($4, $6),
@@ -3457,7 +3312,7 @@
  				}
  			| a_expr NOT_LA BETWEEN opt_asymmetric b_expr AND a_expr %prec NOT_LA
  				{
-@@ -15135,7 +15155,7 @@
+@@ -15135,7 +15183,7 @@
  												   "NOT BETWEEN",
  												   $1,
  												   (Node *) list_make2($5, $7),
@@ -3466,7 +3321,7 @@
  				}
  			| a_expr BETWEEN SYMMETRIC b_expr AND a_expr			%prec BETWEEN
  				{
-@@ -15143,7 +15163,7 @@
+@@ -15143,7 +15191,7 @@
  												   "BETWEEN SYMMETRIC",
  												   $1,
  												   (Node *) list_make2($4, $6),
@@ -3475,7 +3330,7 @@
  				}
  			| a_expr NOT_LA BETWEEN SYMMETRIC b_expr AND a_expr		%prec NOT_LA
  				{
-@@ -15151,7 +15171,7 @@
+@@ -15151,7 +15199,7 @@
  												   "NOT BETWEEN SYMMETRIC",
  												   $1,
  												   (Node *) list_make2($5, $7),
@@ -3484,7 +3339,7 @@
  				}
  			| a_expr IN_P in_expr
  				{
-@@ -15165,13 +15185,13 @@
+@@ -15165,13 +15213,13 @@
  						n->subLinkId = 0;
  						n->testexpr = $1;
  						n->operName = NIL;		/* show it's IN not = ANY */
@@ -3500,7 +3355,7 @@
  					}
  				}
  			| a_expr NOT_LA IN_P in_expr						%prec NOT_LA
-@@ -15187,14 +15207,14 @@
+@@ -15187,14 +15235,14 @@
  						n->subLinkId = 0;
  						n->testexpr = $1;
  						n->operName = NIL;		/* show it's IN not = ANY */
@@ -3518,7 +3373,7 @@
  					}
  				}
  			| a_expr subquery_Op sub_type select_with_parens	%prec Op
-@@ -15206,15 +15226,15 @@
+@@ -15206,15 +15254,15 @@
  					n->testexpr = $1;
  					n->operName = $2;
  					n->subselect = $4;
@@ -3537,7 +3392,7 @@
  				}
  			| UNIQUE opt_unique_null_treatment select_with_parens
  				{
-@@ -15230,55 +15250,55 @@
+@@ -15230,55 +15278,55 @@
  					ereport(ERROR,
  							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
  							 errmsg("UNIQUE predicate is not yet implemented"),
@@ -3610,7 +3465,7 @@
  				}
  			/*
  			 * Required by SQL/JSON, but there are conflicts
-@@ -15287,7 +15307,7 @@
+@@ -15287,7 +15335,7 @@
  				IS  json_predicate_type_constraint
  					json_key_uniqueness_constraint_opt		%prec IS
  				{
@@ -3619,7 +3474,7 @@
  				}
  			*/
  			| a_expr IS NOT
-@@ -15296,7 +15316,7 @@
+@@ -15296,7 +15344,7 @@
  				{
  					JsonFormat *format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
  
@@ -3628,7 +3483,7 @@
  				}
  			/*
  			 * Required by SQL/JSON, but there are conflicts
-@@ -15306,7 +15326,7 @@
+@@ -15306,7 +15354,7 @@
  					json_predicate_type_constraint
  					json_key_uniqueness_constraint_opt		%prec IS
  				{
@@ -3637,7 +3492,7 @@
  				}
  			*/
  			| DEFAULT
-@@ -15321,7 +15341,7 @@
+@@ -15321,7 +15369,7 @@
  					SetToDefault *n = makeNode(SetToDefault);
  
  					/* parse analysis will fill in the rest */
@@ -3646,7 +3501,7 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -15338,57 +15358,57 @@
+@@ -15338,57 +15386,57 @@
  b_expr:		c_expr
  				{ $$ = $1; }
  			| b_expr TYPECAST Typename
@@ -3684,9 +3539,10 @@
 +				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, ">", $1, $3, @2.start); }
  			| b_expr '=' b_expr
 -				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", $1, $3, @2); }
-+				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", $1, $3, @2.start); }
- 			| b_expr LESS_EQUALS b_expr
+-			| b_expr LESS_EQUALS b_expr
 -				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<=", $1, $3, @2); }
++				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", $1, $3, @2.start); }
++			| b_expr LESS_EQUALS b_expr
 +				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<=", $1, $3, @2.start); }
  			| b_expr GREATER_EQUALS b_expr
 -				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, ">=", $1, $3, @2); }
@@ -3726,7 +3582,7 @@
  				}
  		;
  
-@@ -15407,7 +15427,7 @@
+@@ -15407,7 +15455,7 @@
  					ParamRef   *p = makeNode(ParamRef);
  
  					p->number = $1;
@@ -3735,7 +3591,7 @@
  					if ($2)
  					{
  						A_Indirection *n = makeNode(A_Indirection);
-@@ -15445,7 +15465,7 @@
+@@ -15445,7 +15493,7 @@
  					n->testexpr = NULL;
  					n->operName = NIL;
  					n->subselect = $1;
@@ -3744,7 +3600,7 @@
  					$$ = (Node *) n;
  				}
  			| select_with_parens indirection
-@@ -15468,7 +15488,7 @@
+@@ -15468,7 +15516,7 @@
  					n->testexpr = NULL;
  					n->operName = NIL;
  					n->subselect = $1;
@@ -3753,7 +3609,7 @@
  					a->arg = (Node *) n;
  					a->indirection = check_indirection($2, yyscanner);
  					$$ = (Node *) a;
-@@ -15482,7 +15502,7 @@
+@@ -15482,7 +15530,7 @@
  					n->testexpr = NULL;
  					n->operName = NIL;
  					n->subselect = $2;
@@ -3762,7 +3618,7 @@
  					$$ = (Node *) n;
  				}
  			| ARRAY select_with_parens
-@@ -15494,7 +15514,7 @@
+@@ -15494,7 +15542,7 @@
  					n->testexpr = NULL;
  					n->operName = NIL;
  					n->subselect = $2;
@@ -3771,7 +3627,7 @@
  					$$ = (Node *) n;
  				}
  			| ARRAY array_expr
-@@ -15502,7 +15522,7 @@
+@@ -15502,7 +15550,7 @@
  					A_ArrayExpr *n = castNode(A_ArrayExpr, $2);
  
  					/* point outermost A_ArrayExpr to the ARRAY keyword */
@@ -3780,7 +3636,7 @@
  					$$ = (Node *) n;
  				}
  			| explicit_row
-@@ -15513,7 +15533,7 @@
+@@ -15513,7 +15561,7 @@
  					r->row_typeid = InvalidOid;	/* not analyzed yet */
  					r->colnames = NIL;	/* to be filled in during analysis */
  					r->row_format = COERCE_EXPLICIT_CALL; /* abuse */
@@ -3789,7 +3645,7 @@
  					$$ = (Node *) r;
  				}
  			| implicit_row
-@@ -15524,7 +15544,7 @@
+@@ -15524,7 +15572,7 @@
  					r->row_typeid = InvalidOid;	/* not analyzed yet */
  					r->colnames = NIL;	/* to be filled in during analysis */
  					r->row_format = COERCE_IMPLICIT_CAST; /* abuse */
@@ -3798,7 +3654,7 @@
  					$$ = (Node *) r;
  				}
  			| GROUPING '(' expr_list ')'
-@@ -15532,31 +15552,31 @@
+@@ -15532,31 +15580,31 @@
  				  GroupingFunc *g = makeNode(GroupingFunc);
  
  				  g->args = $3;
@@ -3837,7 +3693,7 @@
  
  					n->func_variadic = true;
  					n->agg_order = $5;
-@@ -15564,9 +15584,9 @@
+@@ -15564,9 +15612,9 @@
  				}
  			| func_name '(' func_arg_list ',' VARIADIC func_arg_expr opt_sort_clause ')'
  				{
@@ -3849,7 +3705,7 @@
  
  					n->func_variadic = true;
  					n->agg_order = $7;
-@@ -15574,9 +15594,9 @@
+@@ -15574,9 +15622,9 @@
  				}
  			| func_name '(' ALL func_arg_list opt_sort_clause ')'
  				{
@@ -3861,7 +3717,7 @@
  
  					n->agg_order = $5;
  					/* Ideally we'd mark the FuncCall node to indicate
-@@ -15587,9 +15607,9 @@
+@@ -15587,9 +15635,9 @@
  				}
  			| func_name '(' DISTINCT func_arg_list opt_sort_clause ')'
  				{
@@ -3873,7 +3729,7 @@
  
  					n->agg_order = $5;
  					n->agg_distinct = true;
-@@ -15607,9 +15627,9 @@
+@@ -15607,9 +15655,9 @@
  					 * so that later processing can detect what the argument
  					 * really was.
  					 */
@@ -3885,7 +3741,7 @@
  
  					n->agg_star = true;
  					$$ = (Node *) n;
-@@ -15644,17 +15664,17 @@
+@@ -15644,22 +15692,28 @@
  							ereport(ERROR,
  									(errcode(ERRCODE_SYNTAX_ERROR),
  									 errmsg("cannot use multiple ORDER BY clauses with WITHIN GROUP"),
@@ -3906,7 +3762,18 @@
  						n->agg_order = $2;
  						n->agg_within_group = true;
  					}
-@@ -15694,107 +15714,107 @@
+ 					n->agg_filter = $3;
+ 					n->over = $4;
++					/*
++					 * func_application stamped the extent of the call alone; WITHIN
++					 * GROUP, FILTER and OVER are attached here, so it has to grow to
++					 * cover them.
++					 */
++					n->location_end = @$.end;
+ 					$$ = (Node *) n;
+ 				}
+ 			| json_aggregate_func filter_clause over_clause
+@@ -15694,107 +15748,107 @@
  func_expr_common_subexpr:
  			COLLATION FOR '(' a_expr ')'
  				{
@@ -4043,7 +3910,7 @@
  				}
  			| OVERLAY '(' func_arg_list_opt ')'
  				{
-@@ -15802,10 +15822,10 @@
+@@ -15802,10 +15856,10 @@
  					 * allow functions named overlay() to be called without
  					 * special syntax
  					 */
@@ -4056,7 +3923,7 @@
  				}
  			| POSITION '(' position_list ')'
  				{
-@@ -15816,20 +15836,20 @@
+@@ -15816,20 +15870,20 @@
  					 * for position(), because the reversal of the arguments
  					 * creates too much risk of confusion.
  					 */
@@ -4081,7 +3948,7 @@
  				}
  			| SUBSTRING '(' func_arg_list_opt ')'
  				{
-@@ -15837,10 +15857,10 @@
+@@ -15837,10 +15891,10 @@
  					 * allow functions named substring() to be called without
  					 * special syntax
  					 */
@@ -4094,7 +3961,7 @@
  				}
  			| TREAT '(' a_expr AS Typename ')'
  				{
-@@ -15853,52 +15873,52 @@
+@@ -15853,52 +15907,52 @@
  					 * Convert SystemTypeName() to SystemFuncName() even though
  					 * at the moment they result in the same thing.
  					 */
@@ -4159,7 +4026,7 @@
  					$$ = (Node *) c;
  				}
  			| GREATEST '(' expr_list ')'
-@@ -15907,7 +15927,7 @@
+@@ -15907,7 +15961,7 @@
  
  					v->args = $3;
  					v->op = IS_GREATEST;
@@ -4168,7 +4035,7 @@
  					$$ = (Node *) v;
  				}
  			| LEAST '(' expr_list ')'
-@@ -15916,64 +15936,64 @@
+@@ -15916,64 +15970,64 @@
  
  					v->args = $3;
  					v->op = IS_LEAST;
@@ -4246,7 +4113,7 @@
  				}
  			| XMLSERIALIZE '(' document_or_content a_expr AS SimpleTypename xml_indent_option ')'
  				{
-@@ -15983,14 +16003,14 @@
+@@ -15983,14 +16037,14 @@
  					n->expr = $4;
  					n->typeName = $6;
  					n->indent = $7;
@@ -4264,7 +4131,7 @@
  				}
  			| JSON_OBJECT '(' json_name_and_value_list
  				json_object_constructor_null_clause_opt
-@@ -16003,7 +16023,7 @@
+@@ -16003,7 +16057,7 @@
  					n->absent_on_null = $4;
  					n->unique = $5;
  					n->output = (JsonOutput *) $6;
@@ -4273,7 +4140,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_OBJECT '(' json_returning_clause_opt ')'
-@@ -16014,7 +16034,7 @@
+@@ -16014,7 +16068,7 @@
  					n->absent_on_null = false;
  					n->unique = false;
  					n->output = (JsonOutput *) $3;
@@ -4282,7 +4149,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_ARRAY '('
-@@ -16028,7 +16048,7 @@
+@@ -16028,7 +16082,7 @@
  					n->exprs = $3;
  					n->absent_on_null = $4;
  					n->output = (JsonOutput *) $5;
@@ -4291,7 +4158,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_ARRAY '('
-@@ -16044,7 +16064,7 @@
+@@ -16044,7 +16098,7 @@
  					n->format = (JsonFormat *) $4;
  					n->absent_on_null = true;	/* XXX */
  					n->output = (JsonOutput *) $5;
@@ -4300,7 +4167,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_ARRAY '('
-@@ -16056,7 +16076,7 @@
+@@ -16056,7 +16110,7 @@
  					n->exprs = NIL;
  					n->absent_on_null = true;
  					n->output = (JsonOutput *) $3;
@@ -4309,7 +4176,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON '(' json_value_expr json_key_uniqueness_constraint_opt ')'
-@@ -16066,7 +16086,7 @@
+@@ -16066,7 +16120,7 @@
  					n->expr = (JsonValueExpr *) $3;
  					n->unique_keys = $4;
  					n->output = NULL;
@@ -4318,7 +4185,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_SCALAR '(' a_expr ')'
-@@ -16075,7 +16095,7 @@
+@@ -16075,7 +16129,7 @@
  
  					n->expr = (Expr *) $3;
  					n->output = NULL;
@@ -4327,7 +4194,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_SERIALIZE '(' json_value_expr json_returning_clause_opt ')'
-@@ -16084,7 +16104,7 @@
+@@ -16084,7 +16138,7 @@
  
  					n->expr = (JsonValueExpr *) $3;
  					n->output = (JsonOutput *) $4;
@@ -4336,7 +4203,7 @@
  					$$ = (Node *) n;
  				}
  			| MERGE_ACTION '(' ')'
-@@ -16092,7 +16112,7 @@
+@@ -16092,7 +16146,7 @@
  					MergeSupportFunc *m = makeNode(MergeSupportFunc);
  
  					m->msftype = TEXTOID;
@@ -4345,7 +4212,7 @@
  					$$ = (Node *) m;
  				}
  			| JSON_QUERY '('
-@@ -16114,7 +16134,7 @@
+@@ -16114,7 +16168,7 @@
  					n->quotes = $9;
  					n->on_empty = (JsonBehavior *) linitial($10);
  					n->on_error = (JsonBehavior *) lsecond($10);
@@ -4354,7 +4221,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_EXISTS '('
-@@ -16130,7 +16150,7 @@
+@@ -16130,7 +16184,7 @@
  					n->passing = $6;
  					n->output = NULL;
  					n->on_error = (JsonBehavior *) $7;
@@ -4363,7 +4230,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_VALUE '('
-@@ -16148,7 +16168,7 @@
+@@ -16148,7 +16202,7 @@
  					n->output = (JsonOutput *) $7;
  					n->on_empty = (JsonBehavior *) linitial($8);
  					n->on_error = (JsonBehavior *) lsecond($8);
@@ -4372,25 +4239,27 @@
  					$$ = (Node *) n;
  				}
  			;
-@@ -16186,7 +16206,7 @@
+@@ -16186,7 +16240,8 @@
  					$$->name = $3;
  					$$->indirection = NIL;
  					$$->val = (Node *) $1;
 -					$$->location = @1;
 +					$$->location = @1.start;
++					$$->location_end = @$.end;
  				}
  			| a_expr
  				{
-@@ -16194,7 +16214,7 @@
+@@ -16194,7 +16249,8 @@
  					$$->name = NULL;
  					$$->indirection = NIL;
  					$$->val = (Node *) $1;
 -					$$->location = @1;
 +					$$->location = @1.start;
++					$$->location_end = @$.end;
  				}
  		;
  
-@@ -16289,7 +16309,7 @@
+@@ -16289,7 +16345,7 @@
  					n->frameOptions = FRAMEOPTION_DEFAULTS;
  					n->startOffset = NULL;
  					n->endOffset = NULL;
@@ -4399,7 +4268,7 @@
  					$$ = n;
  				}
  			| /*EMPTY*/
-@@ -16309,7 +16329,7 @@
+@@ -16309,7 +16365,7 @@
  					n->frameOptions = $5->frameOptions;
  					n->startOffset = $5->startOffset;
  					n->endOffset = $5->endOffset;
@@ -4408,7 +4277,7 @@
  					$$ = n;
  				}
  		;
-@@ -16381,12 +16401,12 @@
+@@ -16381,12 +16437,12 @@
  						ereport(ERROR,
  								(errcode(ERRCODE_WINDOWING_ERROR),
  								 errmsg("frame start cannot be UNBOUNDED FOLLOWING"),
@@ -4423,7 +4292,7 @@
  					n->frameOptions |= FRAMEOPTION_END_CURRENT_ROW;
  					$$ = n;
  				}
-@@ -16405,25 +16425,25 @@
+@@ -16405,25 +16461,25 @@
  						ereport(ERROR,
  								(errcode(ERRCODE_WINDOWING_ERROR),
  								 errmsg("frame start cannot be UNBOUNDED FOLLOWING"),
@@ -4453,7 +4322,7 @@
  					n1->frameOptions = frameOptions;
  					n1->endOffset = n2->startOffset;
  					$$ = n1;
-@@ -16605,7 +16625,7 @@
+@@ -16605,7 +16661,7 @@
  					na->name = $1;
  					na->arg = (Expr *) $3;
  					na->argnumber = -1;		/* until determined */
@@ -4462,7 +4331,7 @@
  					$$ = (Node *) na;
  				}
  			| param_name EQUALS_GREATER a_expr
-@@ -16615,7 +16635,7 @@
+@@ -16615,7 +16671,7 @@
  					na->name = $1;
  					na->arg = (Expr *) $3;
  					na->argnumber = -1;		/* until determined */
@@ -4471,7 +4340,7 @@
  					$$ = (Node *) na;
  				}
  		;
-@@ -16630,15 +16650,15 @@
+@@ -16630,15 +16686,15 @@
  
  array_expr: '[' expr_list ']'
  				{
@@ -4490,7 +4359,7 @@
  				}
  		;
  
-@@ -16650,11 +16670,11 @@
+@@ -16650,11 +16706,11 @@
  extract_list:
  			extract_arg FROM a_expr
  				{
@@ -4504,7 +4373,7 @@
  				}
  		;
  
-@@ -16790,7 +16810,7 @@
+@@ -16790,7 +16846,7 @@
  					c->arg = (Expr *) $2;
  					c->args = $3;
  					c->defresult = (Expr *) $4;
@@ -4513,7 +4382,7 @@
  					$$ = (Node *) c;
  				}
  		;
-@@ -16808,7 +16828,7 @@
+@@ -16808,7 +16864,7 @@
  
  					w->expr = (Expr *) $2;
  					w->result = (Expr *) $4;
@@ -4522,7 +4391,7 @@
  					$$ = (Node *) w;
  				}
  		;
-@@ -16824,11 +16844,11 @@
+@@ -16824,11 +16880,11 @@
  
  columnref:	ColId
  				{
@@ -4536,7 +4405,7 @@
  				}
  		;
  
-@@ -16917,9 +16937,9 @@
+@@ -16917,9 +16973,9 @@
  
  json_behavior:
  			DEFAULT a_expr
@@ -4548,7 +4417,7 @@
  		;
  
  json_behavior_type:
-@@ -16977,11 +16997,11 @@
+@@ -16977,11 +17033,11 @@
  								errcode(ERRCODE_INVALID_PARAMETER_VALUE),
  								errmsg("unrecognized JSON encoding: %s", $4));
  
@@ -4562,7 +4431,7 @@
  				}
  		;
  
-@@ -17102,7 +17122,7 @@
+@@ -17102,7 +17158,7 @@
  					n->constructor = makeNode(JsonAggConstructor);
  					n->constructor->output = (JsonOutput *) $6;
  					n->constructor->agg_order = NULL;
@@ -4571,7 +4440,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_ARRAYAGG '('
-@@ -17119,7 +17139,7 @@
+@@ -17119,7 +17175,7 @@
  					n->constructor = makeNode(JsonAggConstructor);
  					n->constructor->agg_order = $4;
  					n->constructor->output = (JsonOutput *) $6;
@@ -4580,30 +4449,33 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -17150,7 +17170,7 @@
+@@ -17150,7 +17206,8 @@
  					$$->name = $3;
  					$$->indirection = NIL;
  					$$->val = (Node *) $1;
 -					$$->location = @1;
 +					$$->location = @1.start;
++					$$->location_end = @$.end;
  				}
  			| a_expr BareColLabel
  				{
-@@ -17158,7 +17178,7 @@
+@@ -17158,7 +17215,8 @@
  					$$->name = $2;
  					$$->indirection = NIL;
  					$$->val = (Node *) $1;
 -					$$->location = @1;
 +					$$->location = @1.start;
++					$$->location_end = @$.end;
  				}
  			| a_expr
  				{
-@@ -17166,20 +17186,20 @@
+@@ -17166,20 +17224,23 @@
  					$$->name = NULL;
  					$$->indirection = NIL;
  					$$->val = (Node *) $1;
 -					$$->location = @1;
 +					$$->location = @1.start;
++					$$->location_end = @$.end;
  				}
  			| '*'
  				{
@@ -4612,6 +4484,7 @@
  					n->fields = list_make1(makeNode(A_Star));
 -					n->location = @1;
 +					n->location = @1.start;
++					n->location_end = @1.end;
  
  					$$ = makeNode(ResTarget);
  					$$->name = NULL;
@@ -4619,10 +4492,11 @@
  					$$->val = (Node *) n;
 -					$$->location = @1;
 +					$$->location = @1.start;
++					$$->location_end = @$.end;
  				}
  		;
  
-@@ -17205,11 +17225,11 @@
+@@ -17205,11 +17266,11 @@
  qualified_name:
  			ColId
  				{
@@ -4636,7 +4510,7 @@
  				}
  		;
  
-@@ -17249,19 +17269,19 @@
+@@ -17249,19 +17310,19 @@
   */
  AexprConst: Iconst
  				{
@@ -4660,7 +4534,7 @@
  				}
  			| XCONST
  				{
-@@ -17270,15 +17290,15 @@
+@@ -17270,15 +17331,15 @@
  					 * a <general literal> shall not be a
  					 * <bit string literal> or a <hex string literal>.
  					 */
@@ -4679,7 +4553,7 @@
  				}
  			| func_name '(' func_arg_list opt_sort_clause ')' Sconst
  				{
-@@ -17306,18 +17326,18 @@
+@@ -17306,18 +17367,18 @@
  							ereport(ERROR,
  									(errcode(ERRCODE_SYNTAX_ERROR),
  									 errmsg("type modifier cannot have ORDER BY"),
@@ -4703,7 +4577,7 @@
  				}
  			| func_name '(' func_arg_list opt_sort_clause ')' PARAM
  				{
-@@ -17345,59 +17365,59 @@
+@@ -17345,59 +17406,59 @@
  							ereport(ERROR,
  									(errcode(ERRCODE_SYNTAX_ERROR),
  									 errmsg("type modifier cannot have ORDER BY"),
@@ -4777,7 +4651,7 @@
  				}
  		;
  
-@@ -17424,28 +17444,28 @@
+@@ -17424,28 +17485,28 @@
  									(errcode(ERRCODE_RESERVED_NAME),
  									 errmsg("role name \"%s\" is reserved",
  											"public"),
@@ -4810,7 +4684,7 @@
  							break;
  					}
  				}
-@@ -17461,7 +17481,7 @@
+@@ -17461,7 +17522,7 @@
  
  					if (strcmp($1, "public") == 0)
  					{
@@ -4819,7 +4693,7 @@
  						n->roletype = ROLESPEC_PUBLIC;
  					}
  					else if (strcmp($1, "none") == 0)
-@@ -17470,26 +17490,26 @@
+@@ -17470,26 +17531,26 @@
  								(errcode(ERRCODE_RESERVED_NAME),
  								 errmsg("role name \"%s\" is reserved",
  										"none"),
@@ -4851,7 +4725,7 @@
  				}
  		;
  
-@@ -17537,7 +17557,7 @@
+@@ -17537,7 +17598,7 @@
  						n->limitOption = $9->limitOption;
  					}
  					n->lockingClause = $10;
@@ -4860,7 +4734,7 @@
  				}
  		;
  
-@@ -17553,7 +17573,7 @@
+@@ -17553,7 +17614,7 @@
  					n->indirection = check_indirection($2, yyscanner);
  					/* nnames will be filled by calling production */
  					n->val = (SelectStmt *) $4;
@@ -4869,12 +4743,10 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -18664,8 +18684,56 @@
- 
- 	/* OK, update length of RawStmt */
+@@ -18666,7 +18727,79 @@
  	rs->stmt_len = end_location - rs->stmt_location;
-+}
-+
+ }
+ 
 +/*
 + * Record the source extent of the rule that produced this node.
 + *
@@ -4884,33 +4756,57 @@
 + * backend.  Only node types that carry location_end are handled; anything
 + * else passes through untouched.
 + */
-+static Node *
+ static Node *
 +nodeExtent(Node *n, YYLTYPE loc)
 +{
 +	if (n == NULL)
 +		return n;
 +
++	/*
++	 * An end without a start is worse than no extent at all, so the pair is kept
++	 * all-or-nothing. Some constructs deliberately carry location -1 - AT LOCAL
++	 * passes it explicitly - and a caller slicing location..location_end there
++	 * would otherwise read from a negative offset.
++	 */
 +	switch (nodeTag(n))
 +	{
 +		case T_FuncCall:
-+			((FuncCall *) n)->location_end = loc.end;
++		{
++			FuncCall   *fc = (FuncCall *) n;
++
++			fc->location_end = fc->location < 0 ? -1 : loc.end;
++
++			/*
++			 * Operator-shaped constructs desugar into a call whose location is the
++			 * keyword, so the rule starts earlier than the node does. Record the
++			 * whole construct separately rather than moving location, which would
++			 * change where errors are reported.
++			 */
++			if (fc->location >= 0 && loc.start >= 0 && loc.start != fc->location)
++			{
++				fc->outer_location = loc.start;
++				fc->outer_location_end = loc.end;
++			}
 +			break;
++		}
 +		case T_ColumnRef:
-+			((ColumnRef *) n)->location_end = loc.end;
++			((ColumnRef *) n)->location_end =
++				((ColumnRef *) n)->location < 0 ? -1 : loc.end;
 +			break;
 +		case T_RangeVar:
-+			((RangeVar *) n)->location_end = loc.end;
++			((RangeVar *) n)->location_end =
++				((RangeVar *) n)->location < 0 ? -1 : loc.end;
 +			break;
 +		case T_SelectStmt:
 +			((SelectStmt *) n)->location = loc.start;
-+			((SelectStmt *) n)->location_end = loc.end;
++			((SelectStmt *) n)->location_end = loc.start < 0 ? -1 : loc.end;
 +			break;
 +		default:
 +			break;
 +	}
 +	return n;
- }
- 
++}
++
 +static FuncCall *
 +fcExtent(FuncCall *n, YYLTYPE loc)
 +{
@@ -4923,9 +4819,315 @@
 +	return (RangeVar *) nodeExtent((Node *) n, loc);
 +}
 +
- static Node *
++static Node *
  makeColumnRef(char *colname, List *indirection,
  			  int location, core_yyscan_t yyscanner)
+ {
+@@ -18681,6 +18814,7 @@
+ 	ListCell   *l;
+ 
+ 	c->location = location;
++	c->location_end = -1;
+ 	foreach(l, indirection)
+ 	{
+ 		if (IsA(lfirst(l), A_Indices))
+@@ -19623,6 +19757,7 @@
+ 		rt->indirection = NIL;
+ 		rt->val = makeColumnRef(strVal(lfirst(lc)), NIL, -1, 0);
+ 		rt->location = -1;
++		rt->location_end = -1;
+ 
+ 		tl = lappend(tl, rt);
+ 	}
+--- a/src/backend/parser/parser.c
++++ b/src/backend/parser/parser.c
+@@ -66,7 +66,8 @@
+ 
+ 		yyextra.have_lookahead = true;
+ 		yyextra.lookahead_token = mode_token[mode];
+-		yyextra.lookahead_yylloc = 0;
++		yyextra.lookahead_yylloc.start = 0;
++		yyextra.lookahead_yylloc.end = 0;
+ 		yyextra.lookahead_end = NULL;
+ 	}
+ 
+@@ -151,7 +152,7 @@
+ 			break;
+ 		case UIDENT:
+ 		case USCONST:
+-			cur_token_length = strlen(yyextra->core_yy_extra.scanbuf + *llocp);
++			cur_token_length = strlen(yyextra->core_yy_extra.scanbuf + llocp->start);
+ 			break;
+ 		case WITHOUT:
+ 			cur_token_length = 7;
+@@ -169,7 +170,7 @@
+ 	 * it to fully revert the lookahead call for error reporting purposes.
+ 	 */
+ 	yyextra->lookahead_end = yyextra->core_yy_extra.scanbuf +
+-		*llocp + cur_token_length;
++		llocp->start + cur_token_length;
+ 	Assert(*(yyextra->lookahead_end) == '\0');
+ 
+ 	/*
+@@ -281,14 +282,19 @@
+ 					scanner_yyerror("invalid Unicode escape character",
+ 									yyscanner);
+ 
+-				/* Now restore *llocp; errors will point to first token */
++				/*
++				 * Now restore *llocp; errors will point to first token.
++				 * All three tokens are consumed as one, so the extent has
++				 * to run through the end of the third one.
++				 */
++				cur_yylloc.end = llocp->end;
+ 				*llocp = cur_yylloc;
+ 
+ 				/* Apply Unicode conversion */
+ 				lvalp->core_yystype.str =
+ 					str_udeescape(lvalp->core_yystype.str,
+ 								  escstr[0],
+-								  *llocp,
++								  llocp->start,
+ 								  yyscanner);
+ 
+ 				/*
+@@ -304,7 +310,7 @@
+ 				lvalp->core_yystype.str =
+ 					str_udeescape(lvalp->core_yystype.str,
+ 								  '\\',
+-								  *llocp,
++								  llocp->start,
+ 								  yyscanner);
+ 			}
+ 
+--- a/src/backend/parser/scan.l
++++ b/src/backend/parser/scan.l
+@@ -102,12 +102,20 @@
+  * this should be done in the first such rule, else yylloc will point
+  * into the middle of the token.
+  */
+-#define SET_YYLLOC()  (*(yylloc) = yytext - yyextra->scanbuf)
++#define SET_YYLLOC()  (yylloc->start = yytext - yyextra->scanbuf, \
++					   yylloc->end = yylloc->start + yyleng)
++
++/*
++ * Record the true end of a token that spans several lexer rules.  The rules
++ * that assemble such tokens already track the end offset in yyllocend (see
++ * the lexer_track_yyllocend patch); this publishes it to the parser.
++ */
++#define SET_YYLLOCEND()  (yylloc->end = yyextra->yyllocend)
+ 
+ /*
+  * Advance yylloc by the given number of bytes.
+  */
+-#define ADVANCE_YYLLOC(delta)  ( *(yylloc) += (delta) )
++#define ADVANCE_YYLLOC(delta)  ( yylloc->start += (delta) )
+ 
+ /*
+  * Sometimes, we do want yylloc to point into the middle of a token; this is
+@@ -131,7 +139,7 @@
+ 
+ #define yyerror(msg)  scanner_yyerror(msg, yyscanner)
+ 
+-#define lexer_errposition()  scanner_errposition(*(yylloc), yyscanner)
++#define lexer_errposition()  scanner_errposition(yylloc->start, yyscanner)
+ 
+ static void check_string_escape_warning(unsigned char ychar, core_yyscan_t yyscanner);
+ static void check_escape_warning(core_yyscan_t yyscanner);
+@@ -482,7 +490,7 @@
+ 					if (yyextra->xcdepth <= 0)
+ 					{
+ 						BEGIN(INITIAL);
+-						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 						return C_COMMENT;
+ 					}
+ 					else
+@@ -560,7 +568,7 @@
+ 					{
+ 						/* If NCHAR isn't a keyword, just return "n" */
+ 						yylval->str = pstrdup("n");
+-						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 						return IDENT;
+ 					}
+ 				}
+@@ -629,11 +637,11 @@
+ 					{
+ 						case xb:
+ 							yylval->str = litbufdup(yyscanner);
+-							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 							return BCONST;
+ 						case xh:
+ 							yylval->str = litbufdup(yyscanner);
+-							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 							return XCONST;
+ 						case xq:
+ 						case xe:
+@@ -646,11 +654,11 @@
+ 											   yyextra->literallen,
+ 											   false);
+ 							yylval->str = litbufdup(yyscanner);
+-							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 							return SCONST;
+ 						case xus:
+ 							yylval->str = litbufdup(yyscanner);
+-							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++							yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 							return USCONST;
+ 						default:
+ 							yyerror("unhandled previous state in xqs");
+@@ -788,7 +796,7 @@
+ 						yyextra->dolqstart = NULL;
+ 						BEGIN(INITIAL);
+ 						yylval->str = litbufdup(yyscanner);
+-						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++						yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 						return SCONST;
+ 					}
+ 					else
+@@ -834,7 +842,7 @@
+ 					if (yyextra->literallen >= NAMEDATALEN)
+ 						truncate_identifier(ident, yyextra->literallen, true);
+ 					yylval->str = ident;
+-					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 					return IDENT;
+ 				}
+ <xui>{dquote}	{
+@@ -843,7 +851,7 @@
+ 						yyerror("zero-length delimited identifier");
+ 					/* can't truncate till after we de-escape the ident */
+ 					yylval->str = litbufdup(yyscanner);
+-					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 					return UIDENT;
+ 				}
+ <xd,xui>{xddouble}	{
+@@ -863,7 +871,7 @@
+ 					/* and treat it as {identifier} */
+ 					ident = downcase_truncate_identifier(yytext, yyleng, true);
+ 					yylval->str = ident;
+-					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 					return IDENT;
+ 				}
+ 
+@@ -1112,7 +1120,7 @@
+ 					 */
+ 					ident = downcase_truncate_identifier(yytext, yyleng, true);
+ 					yylval->str = ident;
+-					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng;
++					yyextra->yyllocend = yytext - yyextra->scanbuf + yyleng; SET_YYLLOCEND();
+ 					return IDENT;
+ 				}
+ 
+@@ -1243,7 +1251,7 @@
+ void
+ scanner_yyerror(const char *message, core_yyscan_t yyscanner)
+ {
+-	const char *loc = yyextra->scanbuf + *yylloc;
++	const char *loc = yyextra->scanbuf + yylloc->start;
+ 
+ 	if (*loc == YY_END_OF_BUFFER_CHAR)
+ 	{
+@@ -1410,7 +1418,7 @@
+ 	 * We expect that pg_unicode_to_server() will complain about any
+ 	 * unconvertible code point, so we don't have to set saw_non_ascii.
+ 	 */
+-	setup_scanner_errposition_callback(&scbstate, yyscanner, *(yylloc));
++	setup_scanner_errposition_callback(&scbstate, yyscanner, yylloc->start);
+ 	pg_unicode_to_server(c, (unsigned char *) buf);
+ 	cancel_scanner_errposition_callback(&scbstate);
+ 	addlit(buf, strlen(buf), yyscanner);
+--- a/src/include/nodes/parsenodes.h
++++ b/src/include/nodes/parsenodes.h
+@@ -293,6 +293,7 @@
+ 	NodeTag		type;
+ 	List	   *fields;			/* field names (String nodes) or A_Star */
+ 	ParseLoc	location;		/* token location, or -1 if unknown */
++	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+ } ColumnRef;
+ 
+ /*
+@@ -434,6 +435,9 @@
+ 	bool		func_variadic;	/* last argument was labeled VARIADIC */
+ 	CoercionForm funcformat;	/* how to display this node */
+ 	ParseLoc	location;		/* token location, or -1 if unknown */
++	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
++	ParseLoc	outer_location;	/* start of the whole construct, or -1 when location already starts it */
++	ParseLoc	outer_location_end; /* end of the whole construct (excl), or -1 */
+ } FuncCall;
+ 
+ /*
+@@ -518,6 +522,7 @@
+ 	List	   *indirection;	/* subscripts, field names, and '*', or NIL */
+ 	Node	   *val;			/* the value expression to compute or assign */
+ 	ParseLoc	location;		/* token location, or -1 if unknown */
++	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+ } ResTarget;
+ 
+ /*
+@@ -2160,6 +2165,9 @@
+ 	struct SelectStmt *larg;	/* left child */
+ 	struct SelectStmt *rarg;	/* right child */
+ 	/* Eventually add fields for CORRESPONDING spec here */
++
++	ParseLoc	location;		/* token location, or -1 if unknown */
++	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+ } SelectStmt;
+ 
+ 
+--- a/src/include/nodes/primnodes.h
++++ b/src/include/nodes/primnodes.h
+@@ -49,6 +49,8 @@
+ 	NodeTag		type;
+ 	char	   *aliasname;		/* aliased rel name (never qualified) */
+ 	List	   *colnames;		/* optional list of column aliases */
++	ParseLoc	location;		/* start of the alias name, or -1 if unknown */
++	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+ } Alias;
+ 
+ /* What to do at commit time for temporary relations */
+@@ -92,6 +94,9 @@
+ 
+ 	/* token location, or -1 if unknown */
+ 	ParseLoc	location;
++
++	/* end of the construct (exclusive), or -1 if unknown */
++	ParseLoc	location_end;
+ } RangeVar;
+ 
+ typedef enum TableFuncType
+--- a/src/include/parser/scanner.h
++++ b/src/include/parser/scanner.h
+@@ -36,13 +36,18 @@
+ /*
+  * We track token locations in terms of byte offsets from the start of the
+  * source string, not the column number/line number representation that
+- * bison uses by default.  Also, to minimize overhead we track only one
+- * location (usually the first token location) for each construct, not
+- * the beginning and ending locations as bison does by default.  It's
+- * therefore sufficient to make YYLTYPE an int.
++ * bison uses by default.  Unlike upstream Postgres, which tracks only the
++ * start offset of each construct, we track both the start and the end, so
++ * that callers can recover the exact source extent of a parse node.
+  */
+-#define YYLTYPE  int
++typedef struct core_YYLTYPE
++{
++	int			start;			/* byte offset of first token */
++	int			end;			/* byte offset just past last token */
++} core_YYLTYPE;
+ 
++#define YYLTYPE  core_YYLTYPE
++
+ /*
+  * Another important component of the scanner's API is the token code numbers.
+  * However, those are not defined in this file, because bison insists on
 --- a/src/pl/plpgsql/src/pl_gram.y
 +++ b/src/pl/plpgsql/src/pl_gram.y
 @@ -414,7 +414,7 @@

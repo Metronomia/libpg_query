@@ -186,6 +186,8 @@ makeAlias(const char *aliasname, List *colnames)
 
 	a->aliasname = pstrdup(aliasname);
 	a->colnames = colnames;
+	a->location = -1;
+	a->location_end = -1;
 
 	return a;
 }
@@ -347,6 +349,10 @@ makeFuncCall(List *name, List *args, CoercionForm funcformat, int location)
 	n->func_variadic = false;
 	n->funcformat = funcformat;
 	n->location = location;
+	n->location_end = -1;
+	/* nodeExtent fills these in when the construct starts before location */
+	n->outer_location = -1;
+	n->outer_location_end = -1;
 	return n;
 }
 

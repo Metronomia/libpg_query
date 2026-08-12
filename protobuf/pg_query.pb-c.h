@@ -2361,10 +2361,12 @@ struct  PgQuery__Alias
   char *aliasname;
   size_t n_colnames;
   PgQuery__Node **colnames;
+  int32_t location;
+  int32_t location_end;
 };
 #define PG_QUERY__ALIAS__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&pg_query__alias__descriptor) \
-, (char *)protobuf_c_empty_string, 0,NULL }
+, (char *)protobuf_c_empty_string, 0,NULL, 0, 0 }
 
 
 struct  PgQuery__RangeVar
@@ -3575,10 +3577,12 @@ struct  PgQuery__FuncCall
   PgQuery__CoercionForm funcformat;
   int32_t location;
   int32_t location_end;
+  int32_t outer_location;
+  int32_t outer_location_end;
 };
 #define PG_QUERY__FUNC_CALL__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&pg_query__func_call__descriptor) \
-, 0,NULL, 0,NULL, 0,NULL, NULL, NULL, 0, 0, 0, 0, PG_QUERY__COERCION_FORM__COERCION_FORM_UNDEFINED, 0, 0 }
+, 0,NULL, 0,NULL, 0,NULL, NULL, NULL, 0, 0, 0, 0, PG_QUERY__COERCION_FORM__COERCION_FORM_UNDEFINED, 0, 0, 0, 0 }
 
 
 struct  PgQuery__AStar
@@ -3634,10 +3638,11 @@ struct  PgQuery__ResTarget
   PgQuery__Node **indirection;
   PgQuery__Node *val;
   int32_t location;
+  int32_t location_end;
 };
 #define PG_QUERY__RES_TARGET__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&pg_query__res_target__descriptor) \
-, (char *)protobuf_c_empty_string, 0,NULL, NULL, 0 }
+, (char *)protobuf_c_empty_string, 0,NULL, NULL, 0, 0 }
 
 
 struct  PgQuery__MultiAssignRef

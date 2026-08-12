@@ -267,6 +267,8 @@ _readAlias(OUT_TYPE(Alias, Alias) msg)
   Alias *node = makeNode(Alias);
   READ_STRING_FIELD(aliasname, aliasname, aliasname);
   READ_LIST_FIELD(colnames, colnames, colnames);
+  READ_INT_FIELD(location, location, location);
+  READ_INT_FIELD(location_end, location_end, location_end);
   return node;
 }
 
@@ -1205,6 +1207,8 @@ _readFuncCall(OUT_TYPE(FuncCall, FuncCall) msg)
   READ_ENUM_FIELD(CoercionForm, funcformat, funcformat, funcformat);
   READ_INT_FIELD(location, location, location);
   READ_INT_FIELD(location_end, location_end, location_end);
+  READ_INT_FIELD(outer_location, outer_location, outer_location);
+  READ_INT_FIELD(outer_location_end, outer_location_end, outer_location_end);
   return node;
 }
 
@@ -1251,6 +1255,7 @@ _readResTarget(OUT_TYPE(ResTarget, ResTarget) msg)
   READ_LIST_FIELD(indirection, indirection, indirection);
   READ_NODE_PTR_FIELD(val, val, val);
   READ_INT_FIELD(location, location, location);
+  READ_INT_FIELD(location_end, location_end, location_end);
   return node;
 }
 

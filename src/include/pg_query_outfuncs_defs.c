@@ -266,6 +266,8 @@ _outAlias(OUT_TYPE(Alias, Alias) out, const Alias *node)
 {
   WRITE_STRING_FIELD(aliasname, aliasname, aliasname);
   WRITE_LIST_FIELD(colnames, colnames, colnames);
+  WRITE_INT_FIELD(location, location, location);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
 }
 
 static void
@@ -1062,6 +1064,8 @@ _outFuncCall(OUT_TYPE(FuncCall, FuncCall) out, const FuncCall *node)
   WRITE_ENUM_FIELD(CoercionForm, funcformat, funcformat, funcformat);
   WRITE_INT_FIELD(location, location, location);
   WRITE_INT_FIELD(location_end, location_end, location_end);
+  WRITE_INT_FIELD(outer_location, outer_location, outer_location);
+  WRITE_INT_FIELD(outer_location_end, outer_location_end, outer_location_end);
 }
 
 static void
@@ -1098,6 +1102,7 @@ _outResTarget(OUT_TYPE(ResTarget, ResTarget) out, const ResTarget *node)
   WRITE_LIST_FIELD(indirection, indirection, indirection);
   WRITE_NODE_PTR_FIELD(val, val, val);
   WRITE_INT_FIELD(location, location, location);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
 }
 
 static void

@@ -43,6 +43,8 @@ _equalAlias(const Alias *a, const Alias *b)
 {
 	COMPARE_STRING_FIELD(aliasname);
 	COMPARE_NODE_FIELD(colnames);
+	COMPARE_LOCATION_FIELD(location);
+	COMPARE_LOCATION_FIELD(location_end);
 
 	return true;
 }
@@ -985,6 +987,8 @@ _equalFuncCall(const FuncCall *a, const FuncCall *b)
 	COMPARE_SCALAR_FIELD(func_variadic);
 	COMPARE_LOCATION_FIELD(location);
 	COMPARE_LOCATION_FIELD(location_end);
+	COMPARE_LOCATION_FIELD(outer_location);
+	COMPARE_LOCATION_FIELD(outer_location_end);
 
 	return true;
 }
@@ -1031,6 +1035,7 @@ _equalResTarget(const ResTarget *a, const ResTarget *b)
 	COMPARE_NODE_FIELD(indirection);
 	COMPARE_NODE_FIELD(val);
 	COMPARE_LOCATION_FIELD(location);
+	COMPARE_LOCATION_FIELD(location_end);
 
 	return true;
 }

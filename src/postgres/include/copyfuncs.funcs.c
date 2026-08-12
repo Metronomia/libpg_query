@@ -45,6 +45,8 @@ _copyAlias(const Alias *from)
 
 	COPY_STRING_FIELD(aliasname);
 	COPY_NODE_FIELD(colnames);
+	COPY_LOCATION_FIELD(location);
+	COPY_LOCATION_FIELD(location_end);
 
 	return newnode;
 }
@@ -1138,6 +1140,8 @@ _copyFuncCall(const FuncCall *from)
 	COPY_SCALAR_FIELD(funcformat);
 	COPY_LOCATION_FIELD(location);
 	COPY_LOCATION_FIELD(location_end);
+	COPY_LOCATION_FIELD(outer_location);
+	COPY_LOCATION_FIELD(outer_location_end);
 
 	return newnode;
 }
@@ -1194,6 +1198,7 @@ _copyResTarget(const ResTarget *from)
 	COPY_NODE_FIELD(indirection);
 	COPY_NODE_FIELD(val);
 	COPY_LOCATION_FIELD(location);
+	COPY_LOCATION_FIELD(location_end);
 
 	return newnode;
 }

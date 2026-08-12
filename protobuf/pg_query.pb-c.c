@@ -16348,7 +16348,7 @@ const ProtobufCMessageDescriptor pg_query__a__const__descriptor =
   (ProtobufCMessageInit) pg_query__a__const__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor pg_query__alias__field_descriptors[2] =
+static const ProtobufCFieldDescriptor pg_query__alias__field_descriptors[4] =
 {
   {
     "aliasname",
@@ -16374,15 +16374,41 @@ static const ProtobufCFieldDescriptor pg_query__alias__field_descriptors[2] =
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "location",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(PgQuery__Alias, location),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "location_end",
+    4,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(PgQuery__Alias, location_end),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned pg_query__alias__field_indices_by_name[] = {
   0,   /* field[0] = aliasname */
   1,   /* field[1] = colnames */
+  2,   /* field[2] = location */
+  3,   /* field[3] = location_end */
 };
 static const ProtobufCIntRange pg_query__alias__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 2 }
+  { 0, 4 }
 };
 const ProtobufCMessageDescriptor pg_query__alias__descriptor =
 {
@@ -16392,7 +16418,7 @@ const ProtobufCMessageDescriptor pg_query__alias__descriptor =
   "PgQuery__Alias",
   "pg_query",
   sizeof(PgQuery__Alias),
-  2,
+  4,
   pg_query__alias__field_descriptors,
   pg_query__alias__field_indices_by_name,
   1,  pg_query__alias__number_ranges,
@@ -24350,7 +24376,7 @@ const ProtobufCMessageDescriptor pg_query__role_spec__descriptor =
   (ProtobufCMessageInit) pg_query__role_spec__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor pg_query__func_call__field_descriptors[12] =
+static const ProtobufCFieldDescriptor pg_query__func_call__field_descriptors[14] =
 {
   {
     "funcname",
@@ -24496,6 +24522,30 @@ static const ProtobufCFieldDescriptor pg_query__func_call__field_descriptors[12]
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "outer_location",
+    13,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(PgQuery__FuncCall, outer_location),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "outer_location_end",
+    14,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(PgQuery__FuncCall, outer_location_end),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned pg_query__func_call__field_indices_by_name[] = {
   7,   /* field[7] = agg_distinct */
@@ -24509,12 +24559,14 @@ static const unsigned pg_query__func_call__field_indices_by_name[] = {
   0,   /* field[0] = funcname */
   10,   /* field[10] = location */
   11,   /* field[11] = location_end */
+  12,   /* field[12] = outer_location */
+  13,   /* field[13] = outer_location_end */
   4,   /* field[4] = over */
 };
 static const ProtobufCIntRange pg_query__func_call__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 12 }
+  { 0, 14 }
 };
 const ProtobufCMessageDescriptor pg_query__func_call__descriptor =
 {
@@ -24524,7 +24576,7 @@ const ProtobufCMessageDescriptor pg_query__func_call__descriptor =
   "PgQuery__FuncCall",
   "pg_query",
   sizeof(PgQuery__FuncCall),
-  12,
+  14,
   pg_query__func_call__field_descriptors,
   pg_query__func_call__field_indices_by_name,
   1,  pg_query__func_call__number_ranges,
@@ -24715,7 +24767,7 @@ const ProtobufCMessageDescriptor pg_query__a__array_expr__descriptor =
   (ProtobufCMessageInit) pg_query__a__array_expr__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor pg_query__res_target__field_descriptors[4] =
+static const ProtobufCFieldDescriptor pg_query__res_target__field_descriptors[5] =
 {
   {
     "name",
@@ -24765,17 +24817,30 @@ static const ProtobufCFieldDescriptor pg_query__res_target__field_descriptors[4]
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "location_end",
+    5,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(PgQuery__ResTarget, location_end),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned pg_query__res_target__field_indices_by_name[] = {
   1,   /* field[1] = indirection */
   3,   /* field[3] = location */
+  4,   /* field[4] = location_end */
   0,   /* field[0] = name */
   2,   /* field[2] = val */
 };
 static const ProtobufCIntRange pg_query__res_target__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 4 }
+  { 0, 5 }
 };
 const ProtobufCMessageDescriptor pg_query__res_target__descriptor =
 {
@@ -24785,7 +24850,7 @@ const ProtobufCMessageDescriptor pg_query__res_target__descriptor =
   "PgQuery__ResTarget",
   "pg_query",
   sizeof(PgQuery__ResTarget),
-  4,
+  5,
   pg_query__res_target__field_descriptors,
   pg_query__res_target__field_indices_by_name,
   1,  pg_query__res_target__number_ranges,

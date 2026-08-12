@@ -436,6 +436,8 @@ typedef struct FuncCall
 	CoercionForm funcformat;	/* how to display this node */
 	ParseLoc	location;		/* token location, or -1 if unknown */
 	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+	ParseLoc	outer_location;	/* start of the whole construct, or -1 when location already starts it */
+	ParseLoc	outer_location_end; /* end of the whole construct (excl), or -1 */
 } FuncCall;
 
 /*
@@ -520,6 +522,7 @@ typedef struct ResTarget
 	List	   *indirection;	/* subscripts, field names, and '*', or NIL */
 	Node	   *val;			/* the value expression to compute or assign */
 	ParseLoc	location;		/* token location, or -1 if unknown */
+	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
 } ResTarget;
 
 /*

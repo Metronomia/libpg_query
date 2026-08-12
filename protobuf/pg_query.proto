@@ -344,6 +344,8 @@ message Alias
 {
   string aliasname = 1 [json_name="aliasname"];
   repeated Node colnames = 2 [json_name="colnames"];
+  int32 location = 3 [json_name="location"];
+  int32 location_end = 4 [json_name="location_end"];
 }
 
 message RangeVar
@@ -1117,6 +1119,8 @@ message FuncCall
   CoercionForm funcformat = 10 [json_name="funcformat"];
   int32 location = 11 [json_name="location"];
   int32 location_end = 12 [json_name="location_end"];
+  int32 outer_location = 13 [json_name="outer_location"];
+  int32 outer_location_end = 14 [json_name="outer_location_end"];
 }
 
 message A_Star
@@ -1148,6 +1152,7 @@ message ResTarget
   repeated Node indirection = 2 [json_name="indirection"];
   Node val = 3 [json_name="val"];
   int32 location = 4 [json_name="location"];
+  int32 location_end = 5 [json_name="location_end"];
 }
 
 message MultiAssignRef
