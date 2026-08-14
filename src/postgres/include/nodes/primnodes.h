@@ -1021,6 +1021,7 @@ typedef struct SubLink
 	/* subselect as Query* or raw parsetree */
 	Node	   *subselect;
 	ParseLoc	location;		/* token location, or -1 if unknown */
+	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
 } SubLink;
 
 /*
@@ -1497,6 +1498,7 @@ typedef struct CoalesceExpr
 	List	   *args;
 	/* token location, or -1 if unknown */
 	ParseLoc	location;
+	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
 } CoalesceExpr;
 
 /*
@@ -1965,6 +1967,7 @@ typedef struct NullTest
 	/* T to perform field-by-field null checks */
 	bool		argisrow pg_node_attr(query_jumble_ignore);
 	ParseLoc	location;		/* token location, or -1 if unknown */
+	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
 } NullTest;
 
 /*
@@ -2296,6 +2299,10 @@ typedef struct JoinExpr
 	Alias	   *alias pg_node_attr(query_jumble_ignore);
 	/* RT index assigned for join, or 0 */
 	int			rtindex;
+	/* start of the joined table expression, or -1 if unknown */
+	ParseLoc	location;
+	/* end of the joined table expression (exclusive), or -1 if unknown */
+	ParseLoc	location_end;
 } JoinExpr;
 
 /*----------

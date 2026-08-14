@@ -507,6 +507,7 @@ _outSubLink(OUT_TYPE(SubLink, SubLink) out, const SubLink *node)
   WRITE_LIST_FIELD(oper_name, operName, operName);
   WRITE_NODE_PTR_FIELD(subselect, subselect, subselect);
   WRITE_INT_FIELD(location, location, location);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
 }
 
 static void
@@ -671,6 +672,7 @@ _outCoalesceExpr(OUT_TYPE(CoalesceExpr, CoalesceExpr) out, const CoalesceExpr *n
   WRITE_UINT_FIELD(coalescecollid, coalescecollid, coalescecollid);
   WRITE_LIST_FIELD(args, args, args);
   WRITE_INT_FIELD(location, location, location);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
 }
 
 static void
@@ -815,6 +817,7 @@ _outNullTest(OUT_TYPE(NullTest, NullTest) out, const NullTest *node)
   WRITE_ENUM_FIELD(NullTestType, nulltesttype, nulltesttype, nulltesttype);
   WRITE_BOOL_FIELD(argisrow, argisrow, argisrow);
   WRITE_INT_FIELD(location, location, location);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
 }
 
 static void
@@ -918,6 +921,8 @@ _outJoinExpr(OUT_TYPE(JoinExpr, JoinExpr) out, const JoinExpr *node)
   WRITE_NODE_PTR_FIELD(quals, quals, quals);
   WRITE_SPECIFIC_NODE_PTR_FIELD(Alias, alias, alias, alias, alias);
   WRITE_INT_FIELD(rtindex, rtindex, rtindex);
+  WRITE_INT_FIELD(location, location, location);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
 }
 
 static void
@@ -1031,6 +1036,7 @@ _outTypeCast(OUT_TYPE(TypeCast, TypeCast) out, const TypeCast *node)
   WRITE_NODE_PTR_FIELD(arg, arg, arg);
   WRITE_SPECIFIC_NODE_PTR_FIELD(TypeName, type_name, type_name, typeName, typeName);
   WRITE_INT_FIELD(location, location, location);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
 }
 
 static void
@@ -1142,6 +1148,8 @@ _outRangeSubselect(OUT_TYPE(RangeSubselect, RangeSubselect) out, const RangeSubs
   WRITE_BOOL_FIELD(lateral, lateral, lateral);
   WRITE_NODE_PTR_FIELD(subquery, subquery, subquery);
   WRITE_SPECIFIC_NODE_PTR_FIELD(Alias, alias, alias, alias, alias);
+  WRITE_INT_FIELD(location, location, location);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
 }
 
 static void
@@ -1506,6 +1514,7 @@ _outCommonTableExpr(OUT_TYPE(CommonTableExpr, CommonTableExpr) out, const Common
   WRITE_LIST_FIELD(ctecoltypes, ctecoltypes, ctecoltypes);
   WRITE_LIST_FIELD(ctecoltypmods, ctecoltypmods, ctecoltypmods);
   WRITE_LIST_FIELD(ctecolcollations, ctecolcollations, ctecolcollations);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
 }
 
 static void

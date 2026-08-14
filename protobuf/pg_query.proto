@@ -582,6 +582,7 @@ message SubLink
   repeated Node oper_name = 5 [json_name="operName"];
   Node subselect = 6 [json_name="subselect"];
   int32 location = 7 [json_name="location"];
+  int32 location_end = 8 [json_name="location_end"];
 }
 
 message SubPlan
@@ -746,6 +747,7 @@ message CoalesceExpr
   uint32 coalescecollid = 3 [json_name="coalescecollid"];
   repeated Node args = 4 [json_name="args"];
   int32 location = 5 [json_name="location"];
+  int32 location_end = 6 [json_name="location_end"];
 }
 
 message MinMaxExpr
@@ -884,6 +886,7 @@ message NullTest
   NullTestType nulltesttype = 3 [json_name="nulltesttype"];
   bool argisrow = 4 [json_name="argisrow"];
   int32 location = 5 [json_name="location"];
+  int32 location_end = 6 [json_name="location_end"];
 }
 
 message BooleanTest
@@ -984,6 +987,8 @@ message JoinExpr
   Node quals = 7 [json_name="quals"];
   Alias alias = 8 [json_name="alias"];
   int32 rtindex = 9 [json_name="rtindex"];
+  int32 location = 10 [json_name="location"];
+  int32 location_end = 11 [json_name="location_end"];
 }
 
 message FromExpr
@@ -1089,6 +1094,7 @@ message TypeCast
   Node arg = 1 [json_name="arg"];
   TypeName type_name = 2 [json_name="typeName"];
   int32 location = 3 [json_name="location"];
+  int32 location_end = 4 [json_name="location_end"];
 }
 
 message CollateClause
@@ -1188,6 +1194,8 @@ message RangeSubselect
   bool lateral = 1 [json_name="lateral"];
   Node subquery = 2 [json_name="subquery"];
   Alias alias = 3 [json_name="alias"];
+  int32 location = 4 [json_name="location"];
+  int32 location_end = 5 [json_name="location_end"];
 }
 
 message RangeFunction
@@ -1521,6 +1529,7 @@ message CommonTableExpr
   repeated Node ctecoltypes = 11 [json_name="ctecoltypes"];
   repeated Node ctecoltypmods = 12 [json_name="ctecoltypmods"];
   repeated Node ctecolcollations = 13 [json_name="ctecolcollations"];
+  int32 location_end = 14 [json_name="location_end"];
 }
 
 message MergeWhenClause

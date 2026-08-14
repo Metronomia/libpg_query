@@ -2726,10 +2726,11 @@ struct  PgQuery__SubLink
   PgQuery__Node **oper_name;
   PgQuery__Node *subselect;
   int32_t location;
+  int32_t location_end;
 };
 #define PG_QUERY__SUB_LINK__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&pg_query__sub_link__descriptor) \
-, NULL, PG_QUERY__SUB_LINK_TYPE__SUB_LINK_TYPE_UNDEFINED, 0, NULL, 0,NULL, NULL, 0 }
+, NULL, PG_QUERY__SUB_LINK_TYPE__SUB_LINK_TYPE_UNDEFINED, 0, NULL, 0,NULL, NULL, 0, 0 }
 
 
 struct  PgQuery__SubPlan
@@ -2987,10 +2988,11 @@ struct  PgQuery__CoalesceExpr
   size_t n_args;
   PgQuery__Node **args;
   int32_t location;
+  int32_t location_end;
 };
 #define PG_QUERY__COALESCE_EXPR__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&pg_query__coalesce_expr__descriptor) \
-, NULL, 0, 0, 0,NULL, 0 }
+, NULL, 0, 0, 0,NULL, 0, 0 }
 
 
 struct  PgQuery__MinMaxExpr
@@ -3202,10 +3204,11 @@ struct  PgQuery__NullTest
   PgQuery__NullTestType nulltesttype;
   protobuf_c_boolean argisrow;
   int32_t location;
+  int32_t location_end;
 };
 #define PG_QUERY__NULL_TEST__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&pg_query__null_test__descriptor) \
-, NULL, NULL, PG_QUERY__NULL_TEST_TYPE__NULL_TEST_TYPE_UNDEFINED, 0, 0 }
+, NULL, NULL, PG_QUERY__NULL_TEST_TYPE__NULL_TEST_TYPE_UNDEFINED, 0, 0, 0 }
 
 
 struct  PgQuery__BooleanTest
@@ -3360,10 +3363,12 @@ struct  PgQuery__JoinExpr
   PgQuery__Node *quals;
   PgQuery__Alias *alias;
   int32_t rtindex;
+  int32_t location;
+  int32_t location_end;
 };
 #define PG_QUERY__JOIN_EXPR__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&pg_query__join_expr__descriptor) \
-, PG_QUERY__JOIN_TYPE__JOIN_TYPE_UNDEFINED, 0, NULL, NULL, 0,NULL, NULL, NULL, NULL, 0 }
+, PG_QUERY__JOIN_TYPE__JOIN_TYPE_UNDEFINED, 0, NULL, NULL, 0,NULL, NULL, NULL, NULL, 0, 0, 0 }
 
 
 struct  PgQuery__FromExpr
@@ -3528,10 +3533,11 @@ struct  PgQuery__TypeCast
   PgQuery__Node *arg;
   PgQuery__TypeName *type_name;
   int32_t location;
+  int32_t location_end;
 };
 #define PG_QUERY__TYPE_CAST__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&pg_query__type_cast__descriptor) \
-, NULL, NULL, 0 }
+, NULL, NULL, 0, 0 }
 
 
 struct  PgQuery__CollateClause
@@ -3697,10 +3703,12 @@ struct  PgQuery__RangeSubselect
   protobuf_c_boolean lateral;
   PgQuery__Node *subquery;
   PgQuery__Alias *alias;
+  int32_t location;
+  int32_t location_end;
 };
 #define PG_QUERY__RANGE_SUBSELECT__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&pg_query__range_subselect__descriptor) \
-, 0, NULL, NULL }
+, 0, NULL, NULL, 0, 0 }
 
 
 struct  PgQuery__RangeFunction
@@ -4234,10 +4242,11 @@ struct  PgQuery__CommonTableExpr
   PgQuery__Node **ctecoltypmods;
   size_t n_ctecolcollations;
   PgQuery__Node **ctecolcollations;
+  int32_t location_end;
 };
 #define PG_QUERY__COMMON_TABLE_EXPR__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&pg_query__common_table_expr__descriptor) \
-, (char *)protobuf_c_empty_string, 0,NULL, PG_QUERY__CTEMATERIALIZE__CTEMATERIALIZE_UNDEFINED, NULL, NULL, NULL, 0, 0, 0, 0,NULL, 0,NULL, 0,NULL, 0,NULL }
+, (char *)protobuf_c_empty_string, 0,NULL, PG_QUERY__CTEMATERIALIZE__CTEMATERIALIZE_UNDEFINED, NULL, NULL, NULL, 0, 0, 0, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0 }
 
 
 struct  PgQuery__MergeWhenClause

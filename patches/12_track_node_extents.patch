@@ -68,16 +68,18 @@
   * (Although we have many nonterminals that follow this pattern, we only
   * bother with fixing @$ like this when the nonterminal's parse location
   * is actually referenced in some rule.)
-@@ -169,6 +186,9 @@
+@@ -169,7 +186,10 @@
  static void updateRawStmtEnd(RawStmt *rs, int end_location);
  static Node *makeColumnRef(char *colname, List *indirection,
  						   int location, core_yyscan_t yyscanner);
+-static Node *makeTypeCast(Node *arg, TypeName *typename, int location);
 +static Node *nodeExtent(Node *n, YYLTYPE loc);
 +static FuncCall *fcExtent(FuncCall *n, YYLTYPE loc);
 +static RangeVar *rvExtent(RangeVar *n, YYLTYPE loc);
- static Node *makeTypeCast(Node *arg, TypeName *typename, int location);
++static Node *makeTypeCast(Node *arg, TypeName *typename, int location, int location_end);
  static Node *makeStringConstCast(char *str, int location, TypeName *typename);
  static Node *makeIntConst(int val, int location);
+ static Node *makeFloatConst(char *str, int location);
 @@ -963,8 +983,8 @@
  /*
   * At top level, we wrap each stmt with a RawStmt node carrying start location
@@ -178,10 +180,9 @@
 +						$$ = makeDefElem("superuser", (Node *) makeBoolean(true), @1.start);
  					else if (strcmp($1, "nosuperuser") == 0)
 -						$$ = makeDefElem("superuser", (Node *) makeBoolean(false), @1);
--					else if (strcmp($1, "createrole") == 0)
--						$$ = makeDefElem("createrole", (Node *) makeBoolean(true), @1);
 +						$$ = makeDefElem("superuser", (Node *) makeBoolean(false), @1.start);
-+					else if (strcmp($1, "createrole") == 0)
+ 					else if (strcmp($1, "createrole") == 0)
+-						$$ = makeDefElem("createrole", (Node *) makeBoolean(true), @1);
 +						$$ = makeDefElem("createrole", (Node *) makeBoolean(true), @1.start);
  					else if (strcmp($1, "nocreaterole") == 0)
 -						$$ = makeDefElem("createrole", (Node *) makeBoolean(false), @1);
@@ -2237,16 +2238,17 @@
  			}
  		;
  
-@@ -12950,7 +12978,7 @@
+@@ -12950,7 +12978,8 @@
  				n->ctequery = $6;
  				n->search_clause = castNode(CTESearchClause, $8);
  				n->cycle_clause = castNode(CTECycleClause, $9);
 -				n->location = @1;
 +				n->location = @1.start;
++				n->location_end = @$.end;
  				$$ = (Node *) n;
  			}
  		;
-@@ -12969,7 +12997,7 @@
+@@ -12969,7 +12998,7 @@
  				n->search_col_list = $5;
  				n->search_breadth_first = false;
  				n->search_seq_column = $7;
@@ -2255,7 +2257,7 @@
  				$$ = (Node *) n;
  			}
  		| SEARCH BREADTH FIRST_P BY columnList SET ColId
-@@ -12979,7 +13007,7 @@
+@@ -12979,7 +13008,7 @@
  				n->search_col_list = $5;
  				n->search_breadth_first = true;
  				n->search_seq_column = $7;
@@ -2264,7 +2266,7 @@
  				$$ = (Node *) n;
  			}
  		| /*EMPTY*/
-@@ -12998,7 +13026,7 @@
+@@ -12998,7 +13027,7 @@
  				n->cycle_mark_value = $6;
  				n->cycle_mark_default = $8;
  				n->cycle_path_column = $10;
@@ -2273,7 +2275,7 @@
  				$$ = (Node *) n;
  			}
  		| CYCLE columnList SET ColId USING ColId
-@@ -13010,7 +13038,7 @@
+@@ -13010,7 +13039,7 @@
  				n->cycle_mark_value = makeBoolAConst(true, -1);
  				n->cycle_mark_default = makeBoolAConst(false, -1);
  				n->cycle_path_column = $6;
@@ -2282,7 +2284,7 @@
  				$$ = (Node *) n;
  			}
  		| /*EMPTY*/
-@@ -13069,7 +13097,7 @@
+@@ -13069,7 +13098,7 @@
  				{
  					ereport(WARNING,
  							(errmsg("GLOBAL is deprecated in temporary table creation"),
@@ -2291,7 +2293,7 @@
  					$$ = $4;
  					$$->relpersistence = RELPERSISTENCE_TEMP;
  				}
-@@ -13077,7 +13105,7 @@
+@@ -13077,7 +13106,7 @@
  				{
  					ereport(WARNING,
  							(errmsg("GLOBAL is deprecated in temporary table creation"),
@@ -2300,7 +2302,7 @@
  					$$ = $4;
  					$$->relpersistence = RELPERSISTENCE_TEMP;
  				}
-@@ -13147,7 +13175,7 @@
+@@ -13147,7 +13176,7 @@
  					$$->sortby_dir = SORTBY_USING;
  					$$->sortby_nulls = $4;
  					$$->useOp = $3;
@@ -2309,7 +2311,7 @@
  				}
  			| a_expr opt_asc_desc opt_nulls_order
  				{
-@@ -13209,7 +13237,7 @@
+@@ -13209,7 +13238,7 @@
  							(errcode(ERRCODE_SYNTAX_ERROR),
  							 errmsg("LIMIT #,# syntax is not supported"),
  							 errhint("Use separate LIMIT and OFFSET clauses."),
@@ -2318,7 +2320,7 @@
  				}
  			/* SQL:2008 syntax */
  			/* to avoid shift/reduce conflicts, handle the optional value with
-@@ -13269,7 +13297,7 @@
+@@ -13269,7 +13298,7 @@
  			| ALL
  				{
  					/* LIMIT ALL is represented as a NULL constant */
@@ -2327,7 +2329,7 @@
  				}
  		;
  
-@@ -13296,14 +13324,14 @@
+@@ -13296,14 +13325,14 @@
  select_fetch_first_value:
  			c_expr									{ $$ = $1; }
  			| '+' I_or_F_const
@@ -2346,7 +2348,7 @@
  		;
  
  /* noise words */
-@@ -13371,7 +13399,7 @@
+@@ -13371,7 +13400,7 @@
  empty_grouping_set:
  			'(' ')'
  				{
@@ -2355,7 +2357,7 @@
  				}
  		;
  
-@@ -13384,21 +13412,21 @@
+@@ -13384,21 +13413,21 @@
  rollup_clause:
  			ROLLUP '(' expr_list ')'
  				{
@@ -2380,7 +2382,7 @@
  				}
  		;
  
-@@ -13458,7 +13486,7 @@
+@@ -13458,7 +13487,7 @@
  					SelectStmt *n = makeNode(SelectStmt);
  
  					n->valuesLists = list_make1($3);
@@ -2389,7 +2391,70 @@
  				}
  			| values_clause ',' '(' expr_list ')'
  				{
-@@ -13696,22 +13724,30 @@
+@@ -13544,6 +13573,8 @@
+ 					n->lateral = false;
+ 					n->subquery = $1;
+ 					n->alias = $2;
++					n->location = @$.start;
++					n->location_end = @$.end;
+ 					$$ = (Node *) n;
+ 				}
+ 			| LATERAL_P select_with_parens opt_alias_clause
+@@ -13553,6 +13584,8 @@
+ 					n->lateral = true;
+ 					n->subquery = $2;
+ 					n->alias = $3;
++					n->location = @$.start;
++					n->location_end = @$.end;
+ 					$$ = (Node *) n;
+ 				}
+ 			| joined_table
+@@ -13616,6 +13649,8 @@
+ 					n->usingClause = NIL;
+ 					n->join_using_alias = NULL;
+ 					n->quals = NULL;
++					n->location = @$.start;
++					n->location_end = @$.end;
+ 					$$ = n;
+ 				}
+ 			| table_ref join_type JOIN table_ref join_qual
+@@ -13637,6 +13672,8 @@
+ 						/* ON clause */
+ 						n->quals = $5;
+ 					}
++					n->location = @$.start;
++					n->location_end = @$.end;
+ 					$$ = n;
+ 				}
+ 			| table_ref JOIN table_ref join_qual
+@@ -13659,6 +13696,8 @@
+ 						/* ON clause */
+ 						n->quals = $4;
+ 					}
++					n->location = @$.start;
++					n->location_end = @$.end;
+ 					$$ = n;
+ 				}
+ 			| table_ref NATURAL join_type JOIN table_ref
+@@ -13672,6 +13711,8 @@
+ 					n->usingClause = NIL; /* figure out which columns later... */
+ 					n->join_using_alias = NULL;
+ 					n->quals = NULL; /* fill later */
++					n->location = @$.start;
++					n->location_end = @$.end;
+ 					$$ = n;
+ 				}
+ 			| table_ref NATURAL JOIN table_ref
+@@ -13686,6 +13727,8 @@
+ 					n->usingClause = NIL; /* figure out which columns later... */
+ 					n->join_using_alias = NULL;
+ 					n->quals = NULL; /* fill later */
++					n->location = @$.start;
++					n->location_end = @$.end;
+ 					$$ = n;
+ 				}
+ 		;
+@@ -13696,22 +13739,30 @@
  					$$ = makeNode(Alias);
  					$$->aliasname = $2;
  					$$->colnames = $4;
@@ -2420,7 +2485,7 @@
  				}
  		;
  
-@@ -13730,6 +13766,8 @@
+@@ -13730,6 +13781,8 @@
  				{
  					$$ = makeNode(Alias);
  					$$->aliasname = $2;
@@ -2429,7 +2494,7 @@
  					/* the column name list will be inserted later */
  				}
  			| /*EMPTY*/								{ $$ = NULL; }
-@@ -13753,6 +13791,8 @@
+@@ -13753,6 +13806,8 @@
  					Alias	   *a = makeNode(Alias);
  
  					a->aliasname = $2;
@@ -2438,7 +2503,7 @@
  					$$ = list_make2(a, $4);
  				}
  			| ColId '(' TableFuncElementList ')'
-@@ -13760,6 +13800,8 @@
+@@ -13760,6 +13815,8 @@
  					Alias	   *a = makeNode(Alias);
  
  					a->aliasname = $1;
@@ -2447,7 +2512,7 @@
  					$$ = list_make2(a, $3);
  				}
  			| /*EMPTY*/
-@@ -13865,6 +13907,8 @@
+@@ -13865,6 +13922,8 @@
  					Alias	   *alias = makeNode(Alias);
  
  					alias->aliasname = $2;
@@ -2456,7 +2521,7 @@
  					$1->alias = alias;
  					$$ = $1;
  				}
-@@ -13873,6 +13917,8 @@
+@@ -13873,6 +13932,8 @@
  					Alias	   *alias = makeNode(Alias);
  
  					alias->aliasname = $3;
@@ -2465,7 +2530,7 @@
  					$1->alias = alias;
  					$$ = $1;
  				}
-@@ -13890,7 +13936,7 @@
+@@ -13890,7 +13951,7 @@
  					n->method = $2;
  					n->args = $4;
  					n->repeatable = $6;
@@ -2474,7 +2539,7 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -14007,7 +14053,7 @@
+@@ -14007,7 +14068,7 @@
  					n->collClause = (CollateClause *) $3;
  					n->collOid = InvalidOid;
  					n->constraints = NIL;
@@ -2483,7 +2548,7 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -14024,7 +14070,7 @@
+@@ -14024,7 +14085,7 @@
  					n->docexpr = $4;
  					n->columns = $6;
  					n->namespaces = NIL;
@@ -2492,7 +2557,7 @@
  					$$ = (Node *) n;
  				}
  			| XMLTABLE '(' XMLNAMESPACES '(' xml_namespace_list ')' ','
-@@ -14036,7 +14082,7 @@
+@@ -14036,7 +14097,7 @@
  					n->docexpr = $9;
  					n->columns = $11;
  					n->namespaces = $5;
@@ -2501,7 +2566,7 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -14056,7 +14102,7 @@
+@@ -14056,7 +14117,7 @@
  					fc->is_not_null = false;
  					fc->colexpr = NULL;
  					fc->coldefexpr = NULL;
@@ -2510,7 +2575,7 @@
  
  					$$ = (Node *) fc;
  				}
-@@ -14072,7 +14118,7 @@
+@@ -14072,7 +14133,7 @@
  					fc->is_not_null = false;
  					fc->colexpr = NULL;
  					fc->coldefexpr = NULL;
@@ -2519,7 +2584,7 @@
  
  					foreach(option, $3)
  					{
-@@ -14124,7 +14170,7 @@
+@@ -14124,7 +14185,7 @@
  					fc->colname = $1;
  					fc->for_ordinality = true;
  					/* other fields are ignored, initialized by makeNode */
@@ -2528,7 +2593,7 @@
  
  					$$ = (Node *) fc;
  				}
-@@ -14144,17 +14190,17 @@
+@@ -14144,17 +14205,17 @@
  						ereport(ERROR,
  								(errcode(ERRCODE_SYNTAX_ERROR),
  								 errmsg("option name \"%s\" cannot be used in XMLTABLE", $1),
@@ -2552,7 +2617,7 @@
  		;
  
  xml_namespace_list:
-@@ -14171,7 +14217,8 @@
+@@ -14171,7 +14232,8 @@
  					$$->name = $3;
  					$$->indirection = NIL;
  					$$->val = $1;
@@ -2562,7 +2627,7 @@
  				}
  			| DEFAULT b_expr
  				{
-@@ -14179,7 +14226,8 @@
+@@ -14179,7 +14241,8 @@
  					$$->name = NULL;
  					$$->indirection = NIL;
  					$$->val = $2;
@@ -2572,7 +2637,7 @@
  				}
  		;
  
-@@ -14200,13 +14248,13 @@
+@@ -14200,13 +14263,13 @@
  						ereport(ERROR,
  								errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
  								errmsg("only string constants are supported in JSON_TABLE path specification"),
@@ -2589,7 +2654,7 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -14230,7 +14278,7 @@
+@@ -14230,7 +14293,7 @@
  
  					n->coltype = JTC_FOR_ORDINALITY;
  					n->name = $1;
@@ -2598,7 +2663,7 @@
  					$$ = (Node *) n;
  				}
  			| ColId Typename
-@@ -14250,7 +14298,7 @@
+@@ -14250,7 +14313,7 @@
  					n->quotes = $5;
  					n->on_empty = (JsonBehavior *) linitial($6);
  					n->on_error = (JsonBehavior *) lsecond($6);
@@ -2607,7 +2672,7 @@
  					$$ = (Node *) n;
  				}
  			| ColId Typename json_format_clause
-@@ -14270,7 +14318,7 @@
+@@ -14270,7 +14333,7 @@
  					n->quotes = $6;
  					n->on_empty = (JsonBehavior *) linitial($7);
  					n->on_error = (JsonBehavior *) lsecond($7);
@@ -2616,7 +2681,7 @@
  					$$ = (Node *) n;
  				}
  			| ColId Typename
-@@ -14288,7 +14336,7 @@
+@@ -14288,7 +14351,7 @@
  					n->pathspec = (JsonTablePathSpec *) $4;
  					n->on_empty = NULL;
  					n->on_error = (JsonBehavior *) $5;
@@ -2625,7 +2690,7 @@
  					$$ = (Node *) n;
  				}
  			| NESTED path_opt Sconst
-@@ -14298,9 +14346,9 @@
+@@ -14298,9 +14361,9 @@
  
  					n->coltype = JTC_NESTED;
  					n->pathspec = (JsonTablePathSpec *)
@@ -2637,7 +2702,7 @@
  					$$ = (Node *) n;
  				}
  			| NESTED path_opt Sconst AS name
-@@ -14310,9 +14358,9 @@
+@@ -14310,9 +14373,9 @@
  
  					n->coltype = JTC_NESTED;
  					n->pathspec = (JsonTablePathSpec *)
@@ -2649,7 +2714,7 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -14324,7 +14372,7 @@
+@@ -14324,7 +14387,7 @@
  
  json_table_column_path_clause_opt:
  			PATH Sconst
@@ -2658,7 +2723,7 @@
  			| /* EMPTY */
  				{ $$ = NULL; }
  		;
-@@ -14399,7 +14447,7 @@
+@@ -14399,7 +14462,7 @@
  				{
  					$$ = $1;
  					$$->typmods = list_make2(makeIntConst(INTERVAL_FULL_RANGE, -1),
@@ -2667,7 +2732,7 @@
  				}
  			| JsonType								{ $$ = $1; }
  		;
-@@ -14435,13 +14483,13 @@
+@@ -14435,13 +14498,13 @@
  				{
  					$$ = makeTypeName($1);
  					$$->typmods = $2;
@@ -2683,7 +2748,7 @@
  				}
  		;
  
-@@ -14455,60 +14503,60 @@
+@@ -14455,60 +14518,60 @@
  Numeric:	INT_P
  				{
  					$$ = SystemTypeName("int4");
@@ -2755,7 +2820,7 @@
  				}
  		;
  
-@@ -14522,7 +14570,7 @@
+@@ -14522,7 +14585,7 @@
  						ereport(ERROR,
  								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
  								 errmsg("precision for type float must be at least 1 bit"),
@@ -2764,7 +2829,7 @@
  					else if ($2 <= 24)
  						$$ = SystemTypeName("float4");
  					else if ($2 <= 53)
-@@ -14531,7 +14579,7 @@
+@@ -14531,7 +14594,7 @@
  						ereport(ERROR,
  								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
  								 errmsg("precision for type float must be less than 54 bits"),
@@ -2773,7 +2838,7 @@
  				}
  			| /*EMPTY*/
  				{
-@@ -14574,7 +14622,7 @@
+@@ -14574,7 +14637,7 @@
  					typname = $2 ? "varbit" : "bit";
  					$$ = SystemTypeName(typname);
  					$$->typmods = $4;
@@ -2782,7 +2847,7 @@
  				}
  		;
  
-@@ -14591,7 +14639,7 @@
+@@ -14591,7 +14654,7 @@
  						$$ = SystemTypeName("bit");
  						$$->typmods = list_make1(makeIntConst(1, -1));
  					}
@@ -2791,7 +2856,7 @@
  				}
  		;
  
-@@ -14630,8 +14678,8 @@
+@@ -14630,8 +14693,8 @@
  CharacterWithLength:  character '(' Iconst ')'
  				{
  					$$ = SystemTypeName($1);
@@ -2802,7 +2867,7 @@
  				}
  		;
  
-@@ -14641,7 +14689,7 @@
+@@ -14641,7 +14704,7 @@
  					/* char defaults to char(1), varchar to no limit */
  					if (strcmp($1, "bpchar") == 0)
  						$$->typmods = list_make1(makeIntConst(1, -1));
@@ -2811,7 +2876,7 @@
  				}
  		;
  
-@@ -14674,8 +14722,8 @@
+@@ -14674,8 +14737,8 @@
  						$$ = SystemTypeName("timestamptz");
  					else
  						$$ = SystemTypeName("timestamp");
@@ -2822,7 +2887,7 @@
  				}
  			| TIMESTAMP opt_timezone
  				{
-@@ -14683,7 +14731,7 @@
+@@ -14683,7 +14746,7 @@
  						$$ = SystemTypeName("timestamptz");
  					else
  						$$ = SystemTypeName("timestamp");
@@ -2831,7 +2896,7 @@
  				}
  			| TIME '(' Iconst ')' opt_timezone
  				{
-@@ -14691,8 +14739,8 @@
+@@ -14691,8 +14754,8 @@
  						$$ = SystemTypeName("timetz");
  					else
  						$$ = SystemTypeName("time");
@@ -2842,7 +2907,7 @@
  				}
  			| TIME opt_timezone
  				{
-@@ -14700,7 +14748,7 @@
+@@ -14700,7 +14763,7 @@
  						$$ = SystemTypeName("timetz");
  					else
  						$$ = SystemTypeName("time");
@@ -2851,7 +2916,7 @@
  				}
  		;
  
-@@ -14708,7 +14756,7 @@
+@@ -14708,7 +14771,7 @@
  			INTERVAL
  				{
  					$$ = SystemTypeName("interval");
@@ -2860,7 +2925,7 @@
  				}
  		;
  
-@@ -14720,32 +14768,32 @@
+@@ -14720,32 +14783,32 @@
  
  opt_interval:
  			YEAR_P
@@ -2901,7 +2966,7 @@
  				}
  			| DAY_P TO interval_second
  				{
-@@ -14753,25 +14801,25 @@
+@@ -14753,25 +14816,25 @@
  					linitial($$) = makeIntConst(INTERVAL_MASK(DAY) |
  												INTERVAL_MASK(HOUR) |
  												INTERVAL_MASK(MINUTE) |
@@ -2931,7 +2996,7 @@
  				}
  			| /*EMPTY*/
  				{ $$ = NIL; }
-@@ -14780,12 +14828,12 @@
+@@ -14780,12 +14843,12 @@
  interval_second:
  			SECOND_P
  				{
@@ -2947,7 +3012,7 @@
  				}
  		;
  
-@@ -14793,7 +14841,7 @@
+@@ -14793,7 +14856,7 @@
  			JSON
  				{
  					$$ = SystemTypeName("json");
@@ -2956,12 +3021,12 @@
  				}
  		;
  
-@@ -14827,29 +14875,29 @@
+@@ -14827,29 +14890,29 @@
   */
  a_expr:		c_expr									{ $$ = $1; }
  			| a_expr TYPECAST Typename
 -					{ $$ = makeTypeCast($1, $3, @2); }
-+					{ $$ = makeTypeCast($1, $3, @2.start); }
++					{ $$ = makeTypeCast($1, $3, @2.start, @$.end); }
  			| a_expr COLLATE any_name
  				{
  					CollateClause *n = makeNode(CollateClause);
@@ -2992,7 +3057,7 @@
  				}
  		/*
  		 * These operators must be called out explicitly in order to make use
-@@ -14861,140 +14909,140 @@
+@@ -14861,140 +14924,140 @@
  		 * also to b_expr and to the MathOp list below.
  		 */
  			| '+' a_expr					%prec UMINUS
@@ -3181,43 +3246,47 @@
  				}
  
  			/* NullTest clause
-@@ -15012,7 +15060,7 @@
+@@ -15012,7 +15075,8 @@
  
  					n->arg = (Expr *) $1;
  					n->nulltesttype = IS_NULL;
 -					n->location = @2;
 +					n->location = @2.start;
++					n->location_end = @$.end;
  					$$ = (Node *) n;
  				}
  			| a_expr ISNULL
-@@ -15021,7 +15069,7 @@
+@@ -15021,7 +15085,8 @@
  
  					n->arg = (Expr *) $1;
  					n->nulltesttype = IS_NULL;
 -					n->location = @2;
 +					n->location = @2.start;
++					n->location_end = @$.end;
  					$$ = (Node *) n;
  				}
  			| a_expr IS NOT NULL_P						%prec IS
-@@ -15030,7 +15078,7 @@
+@@ -15030,7 +15095,8 @@
  
  					n->arg = (Expr *) $1;
  					n->nulltesttype = IS_NOT_NULL;
 -					n->location = @2;
 +					n->location = @2.start;
++					n->location_end = @$.end;
  					$$ = (Node *) n;
  				}
  			| a_expr NOTNULL
-@@ -15039,7 +15087,7 @@
+@@ -15039,7 +15105,8 @@
  
  					n->arg = (Expr *) $1;
  					n->nulltesttype = IS_NOT_NULL;
 -					n->location = @2;
 +					n->location = @2.start;
++					n->location_end = @$.end;
  					$$ = (Node *) n;
  				}
  			| row OVERLAPS row
-@@ -15048,16 +15096,16 @@
+@@ -15048,16 +15115,16 @@
  						ereport(ERROR,
  								(errcode(ERRCODE_SYNTAX_ERROR),
  								 errmsg("wrong number of parameters on left side of OVERLAPS expression"),
@@ -3238,7 +3307,7 @@
  				}
  			| a_expr IS TRUE_P							%prec IS
  				{
-@@ -15065,7 +15113,7 @@
+@@ -15065,7 +15132,7 @@
  
  					b->arg = (Expr *) $1;
  					b->booltesttype = IS_TRUE;
@@ -3247,7 +3316,7 @@
  					$$ = (Node *) b;
  				}
  			| a_expr IS NOT TRUE_P						%prec IS
-@@ -15074,7 +15122,7 @@
+@@ -15074,7 +15141,7 @@
  
  					b->arg = (Expr *) $1;
  					b->booltesttype = IS_NOT_TRUE;
@@ -3256,7 +3325,7 @@
  					$$ = (Node *) b;
  				}
  			| a_expr IS FALSE_P							%prec IS
-@@ -15083,7 +15131,7 @@
+@@ -15083,7 +15150,7 @@
  
  					b->arg = (Expr *) $1;
  					b->booltesttype = IS_FALSE;
@@ -3265,7 +3334,7 @@
  					$$ = (Node *) b;
  				}
  			| a_expr IS NOT FALSE_P						%prec IS
-@@ -15092,7 +15140,7 @@
+@@ -15092,7 +15159,7 @@
  
  					b->arg = (Expr *) $1;
  					b->booltesttype = IS_NOT_FALSE;
@@ -3274,7 +3343,7 @@
  					$$ = (Node *) b;
  				}
  			| a_expr IS UNKNOWN							%prec IS
-@@ -15101,7 +15149,7 @@
+@@ -15101,7 +15168,7 @@
  
  					b->arg = (Expr *) $1;
  					b->booltesttype = IS_UNKNOWN;
@@ -3283,7 +3352,7 @@
  					$$ = (Node *) b;
  				}
  			| a_expr IS NOT UNKNOWN						%prec IS
-@@ -15110,16 +15158,16 @@
+@@ -15110,16 +15177,16 @@
  
  					b->arg = (Expr *) $1;
  					b->booltesttype = IS_NOT_UNKNOWN;
@@ -3303,7 +3372,7 @@
  				}
  			| a_expr BETWEEN opt_asymmetric b_expr AND a_expr		%prec BETWEEN
  				{
-@@ -15127,7 +15175,7 @@
+@@ -15127,7 +15194,7 @@
  												   "BETWEEN",
  												   $1,
  												   (Node *) list_make2($4, $6),
@@ -3312,7 +3381,7 @@
  				}
  			| a_expr NOT_LA BETWEEN opt_asymmetric b_expr AND a_expr %prec NOT_LA
  				{
-@@ -15135,7 +15183,7 @@
+@@ -15135,7 +15202,7 @@
  												   "NOT BETWEEN",
  												   $1,
  												   (Node *) list_make2($5, $7),
@@ -3321,7 +3390,7 @@
  				}
  			| a_expr BETWEEN SYMMETRIC b_expr AND a_expr			%prec BETWEEN
  				{
-@@ -15143,7 +15191,7 @@
+@@ -15143,7 +15210,7 @@
  												   "BETWEEN SYMMETRIC",
  												   $1,
  												   (Node *) list_make2($4, $6),
@@ -3330,7 +3399,7 @@
  				}
  			| a_expr NOT_LA BETWEEN SYMMETRIC b_expr AND a_expr		%prec NOT_LA
  				{
-@@ -15151,7 +15199,7 @@
+@@ -15151,7 +15218,7 @@
  												   "NOT BETWEEN SYMMETRIC",
  												   $1,
  												   (Node *) list_make2($5, $7),
@@ -3339,7 +3408,7 @@
  				}
  			| a_expr IN_P in_expr
  				{
-@@ -15165,13 +15213,13 @@
+@@ -15165,13 +15232,13 @@
  						n->subLinkId = 0;
  						n->testexpr = $1;
  						n->operName = NIL;		/* show it's IN not = ANY */
@@ -3355,7 +3424,7 @@
  					}
  				}
  			| a_expr NOT_LA IN_P in_expr						%prec NOT_LA
-@@ -15187,14 +15235,14 @@
+@@ -15187,14 +15254,14 @@
  						n->subLinkId = 0;
  						n->testexpr = $1;
  						n->operName = NIL;		/* show it's IN not = ANY */
@@ -3373,12 +3442,13 @@
  					}
  				}
  			| a_expr subquery_Op sub_type select_with_parens	%prec Op
-@@ -15206,15 +15254,15 @@
+@@ -15206,15 +15273,16 @@
  					n->testexpr = $1;
  					n->operName = $2;
  					n->subselect = $4;
 -					n->location = @2;
 +					n->location = @2.start;
++					n->location_end = @$.end;
  					$$ = (Node *) n;
  				}
  			| a_expr subquery_Op sub_type '(' a_expr ')'		%prec Op
@@ -3392,7 +3462,7 @@
  				}
  			| UNIQUE opt_unique_null_treatment select_with_parens
  				{
-@@ -15230,55 +15278,55 @@
+@@ -15230,55 +15298,55 @@
  					ereport(ERROR,
  							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
  							 errmsg("UNIQUE predicate is not yet implemented"),
@@ -3465,7 +3535,7 @@
  				}
  			/*
  			 * Required by SQL/JSON, but there are conflicts
-@@ -15287,7 +15335,7 @@
+@@ -15287,7 +15355,7 @@
  				IS  json_predicate_type_constraint
  					json_key_uniqueness_constraint_opt		%prec IS
  				{
@@ -3474,7 +3544,7 @@
  				}
  			*/
  			| a_expr IS NOT
-@@ -15296,7 +15344,7 @@
+@@ -15296,7 +15364,7 @@
  				{
  					JsonFormat *format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
  
@@ -3483,7 +3553,7 @@
  				}
  			/*
  			 * Required by SQL/JSON, but there are conflicts
-@@ -15306,7 +15354,7 @@
+@@ -15306,7 +15374,7 @@
  					json_predicate_type_constraint
  					json_key_uniqueness_constraint_opt		%prec IS
  				{
@@ -3492,7 +3562,7 @@
  				}
  			*/
  			| DEFAULT
-@@ -15321,7 +15369,7 @@
+@@ -15321,7 +15389,7 @@
  					SetToDefault *n = makeNode(SetToDefault);
  
  					/* parse analysis will fill in the rest */
@@ -3501,12 +3571,12 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -15338,57 +15386,57 @@
+@@ -15338,57 +15406,57 @@
  b_expr:		c_expr
  				{ $$ = $1; }
  			| b_expr TYPECAST Typename
 -				{ $$ = makeTypeCast($1, $3, @2); }
-+				{ $$ = makeTypeCast($1, $3, @2.start); }
++				{ $$ = makeTypeCast($1, $3, @2.start, @$.end); }
  			| '+' b_expr					%prec UMINUS
 -				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, $2, @1); }
 +				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, $2, @1.start); }
@@ -3539,10 +3609,9 @@
 +				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, ">", $1, $3, @2.start); }
  			| b_expr '=' b_expr
 -				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", $1, $3, @2); }
--			| b_expr LESS_EQUALS b_expr
--				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<=", $1, $3, @2); }
 +				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", $1, $3, @2.start); }
-+			| b_expr LESS_EQUALS b_expr
+ 			| b_expr LESS_EQUALS b_expr
+-				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<=", $1, $3, @2); }
 +				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<=", $1, $3, @2.start); }
  			| b_expr GREATER_EQUALS b_expr
 -				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, ">=", $1, $3, @2); }
@@ -3582,7 +3651,7 @@
  				}
  		;
  
-@@ -15407,7 +15455,7 @@
+@@ -15407,7 +15475,7 @@
  					ParamRef   *p = makeNode(ParamRef);
  
  					p->number = $1;
@@ -3591,43 +3660,48 @@
  					if ($2)
  					{
  						A_Indirection *n = makeNode(A_Indirection);
-@@ -15445,7 +15493,7 @@
+@@ -15445,7 +15513,8 @@
  					n->testexpr = NULL;
  					n->operName = NIL;
  					n->subselect = $1;
 -					n->location = @1;
 +					n->location = @1.start;
++					n->location_end = @$.end;
  					$$ = (Node *) n;
  				}
  			| select_with_parens indirection
-@@ -15468,7 +15516,7 @@
+@@ -15468,7 +15537,9 @@
  					n->testexpr = NULL;
  					n->operName = NIL;
  					n->subselect = $1;
 -					n->location = @1;
 +					n->location = @1.start;
++					/* the sub-SELECT ends before the indirection that decorates it */
++					n->location_end = @1.end;
  					a->arg = (Node *) n;
  					a->indirection = check_indirection($2, yyscanner);
  					$$ = (Node *) a;
-@@ -15482,7 +15530,7 @@
+@@ -15482,7 +15553,8 @@
  					n->testexpr = NULL;
  					n->operName = NIL;
  					n->subselect = $2;
 -					n->location = @1;
 +					n->location = @1.start;
++					n->location_end = @$.end;
  					$$ = (Node *) n;
  				}
  			| ARRAY select_with_parens
-@@ -15494,7 +15542,7 @@
+@@ -15494,7 +15566,8 @@
  					n->testexpr = NULL;
  					n->operName = NIL;
  					n->subselect = $2;
 -					n->location = @1;
 +					n->location = @1.start;
++					n->location_end = @$.end;
  					$$ = (Node *) n;
  				}
  			| ARRAY array_expr
-@@ -15502,7 +15550,7 @@
+@@ -15502,7 +15575,7 @@
  					A_ArrayExpr *n = castNode(A_ArrayExpr, $2);
  
  					/* point outermost A_ArrayExpr to the ARRAY keyword */
@@ -3636,7 +3710,7 @@
  					$$ = (Node *) n;
  				}
  			| explicit_row
-@@ -15513,7 +15561,7 @@
+@@ -15513,7 +15586,7 @@
  					r->row_typeid = InvalidOid;	/* not analyzed yet */
  					r->colnames = NIL;	/* to be filled in during analysis */
  					r->row_format = COERCE_EXPLICIT_CALL; /* abuse */
@@ -3645,7 +3719,7 @@
  					$$ = (Node *) r;
  				}
  			| implicit_row
-@@ -15524,7 +15572,7 @@
+@@ -15524,7 +15597,7 @@
  					r->row_typeid = InvalidOid;	/* not analyzed yet */
  					r->colnames = NIL;	/* to be filled in during analysis */
  					r->row_format = COERCE_IMPLICIT_CAST; /* abuse */
@@ -3654,7 +3728,7 @@
  					$$ = (Node *) r;
  				}
  			| GROUPING '(' expr_list ')'
-@@ -15532,31 +15580,31 @@
+@@ -15532,31 +15605,31 @@
  				  GroupingFunc *g = makeNode(GroupingFunc);
  
  				  g->args = $3;
@@ -3693,7 +3767,7 @@
  
  					n->func_variadic = true;
  					n->agg_order = $5;
-@@ -15564,9 +15612,9 @@
+@@ -15564,9 +15637,9 @@
  				}
  			| func_name '(' func_arg_list ',' VARIADIC func_arg_expr opt_sort_clause ')'
  				{
@@ -3705,7 +3779,7 @@
  
  					n->func_variadic = true;
  					n->agg_order = $7;
-@@ -15574,9 +15622,9 @@
+@@ -15574,9 +15647,9 @@
  				}
  			| func_name '(' ALL func_arg_list opt_sort_clause ')'
  				{
@@ -3717,7 +3791,7 @@
  
  					n->agg_order = $5;
  					/* Ideally we'd mark the FuncCall node to indicate
-@@ -15587,9 +15635,9 @@
+@@ -15587,9 +15660,9 @@
  				}
  			| func_name '(' DISTINCT func_arg_list opt_sort_clause ')'
  				{
@@ -3729,7 +3803,7 @@
  
  					n->agg_order = $5;
  					n->agg_distinct = true;
-@@ -15607,9 +15655,9 @@
+@@ -15607,9 +15680,9 @@
  					 * so that later processing can detect what the argument
  					 * really was.
  					 */
@@ -3741,7 +3815,7 @@
  
  					n->agg_star = true;
  					$$ = (Node *) n;
-@@ -15644,22 +15692,28 @@
+@@ -15644,22 +15717,28 @@
  							ereport(ERROR,
  									(errcode(ERRCODE_SYNTAX_ERROR),
  									 errmsg("cannot use multiple ORDER BY clauses with WITHIN GROUP"),
@@ -3773,7 +3847,7 @@
  					$$ = (Node *) n;
  				}
  			| json_aggregate_func filter_clause over_clause
-@@ -15694,107 +15748,107 @@
+@@ -15694,107 +15773,107 @@
  func_expr_common_subexpr:
  			COLLATION FOR '(' a_expr ')'
  				{
@@ -3870,7 +3944,7 @@
  				}
  			| CAST '(' a_expr AS Typename ')'
 -				{ $$ = makeTypeCast($3, $5, @1); }
-+				{ $$ = makeTypeCast($3, $5, @1.start); }
++				{ $$ = makeTypeCast($3, $5, @1.start, @$.end); }
  			| EXTRACT '(' extract_list ')'
  				{
 -					$$ = (Node *) makeFuncCall(SystemFuncName("extract"),
@@ -3910,7 +3984,7 @@
  				}
  			| OVERLAY '(' func_arg_list_opt ')'
  				{
-@@ -15802,10 +15856,10 @@
+@@ -15802,10 +15881,10 @@
  					 * allow functions named overlay() to be called without
  					 * special syntax
  					 */
@@ -3923,7 +3997,7 @@
  				}
  			| POSITION '(' position_list ')'
  				{
-@@ -15816,20 +15870,20 @@
+@@ -15816,20 +15895,20 @@
  					 * for position(), because the reversal of the arguments
  					 * creates too much risk of confusion.
  					 */
@@ -3948,7 +4022,7 @@
  				}
  			| SUBSTRING '(' func_arg_list_opt ')'
  				{
-@@ -15837,10 +15891,10 @@
+@@ -15837,10 +15916,10 @@
  					 * allow functions named substring() to be called without
  					 * special syntax
  					 */
@@ -3961,7 +4035,7 @@
  				}
  			| TREAT '(' a_expr AS Typename ')'
  				{
-@@ -15853,52 +15907,52 @@
+@@ -15853,52 +15932,53 @@
  					 * Convert SystemTypeName() to SystemFuncName() even though
  					 * at the moment they result in the same thing.
  					 */
@@ -4023,10 +4097,11 @@
  					c->args = $3;
 -					c->location = @1;
 +					c->location = @1.start;
++					c->location_end = @$.end;
  					$$ = (Node *) c;
  				}
  			| GREATEST '(' expr_list ')'
-@@ -15907,7 +15961,7 @@
+@@ -15907,7 +15987,7 @@
  
  					v->args = $3;
  					v->op = IS_GREATEST;
@@ -4035,7 +4110,7 @@
  					$$ = (Node *) v;
  				}
  			| LEAST '(' expr_list ')'
-@@ -15916,64 +15970,64 @@
+@@ -15916,64 +15996,64 @@
  
  					v->args = $3;
  					v->op = IS_LEAST;
@@ -4113,7 +4188,7 @@
  				}
  			| XMLSERIALIZE '(' document_or_content a_expr AS SimpleTypename xml_indent_option ')'
  				{
-@@ -15983,14 +16037,14 @@
+@@ -15983,14 +16063,14 @@
  					n->expr = $4;
  					n->typeName = $6;
  					n->indent = $7;
@@ -4131,7 +4206,7 @@
  				}
  			| JSON_OBJECT '(' json_name_and_value_list
  				json_object_constructor_null_clause_opt
-@@ -16003,7 +16057,7 @@
+@@ -16003,7 +16083,7 @@
  					n->absent_on_null = $4;
  					n->unique = $5;
  					n->output = (JsonOutput *) $6;
@@ -4140,7 +4215,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_OBJECT '(' json_returning_clause_opt ')'
-@@ -16014,7 +16068,7 @@
+@@ -16014,7 +16094,7 @@
  					n->absent_on_null = false;
  					n->unique = false;
  					n->output = (JsonOutput *) $3;
@@ -4149,7 +4224,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_ARRAY '('
-@@ -16028,7 +16082,7 @@
+@@ -16028,7 +16108,7 @@
  					n->exprs = $3;
  					n->absent_on_null = $4;
  					n->output = (JsonOutput *) $5;
@@ -4158,7 +4233,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_ARRAY '('
-@@ -16044,7 +16098,7 @@
+@@ -16044,7 +16124,7 @@
  					n->format = (JsonFormat *) $4;
  					n->absent_on_null = true;	/* XXX */
  					n->output = (JsonOutput *) $5;
@@ -4167,7 +4242,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_ARRAY '('
-@@ -16056,7 +16110,7 @@
+@@ -16056,7 +16136,7 @@
  					n->exprs = NIL;
  					n->absent_on_null = true;
  					n->output = (JsonOutput *) $3;
@@ -4176,7 +4251,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON '(' json_value_expr json_key_uniqueness_constraint_opt ')'
-@@ -16066,7 +16120,7 @@
+@@ -16066,7 +16146,7 @@
  					n->expr = (JsonValueExpr *) $3;
  					n->unique_keys = $4;
  					n->output = NULL;
@@ -4185,7 +4260,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_SCALAR '(' a_expr ')'
-@@ -16075,7 +16129,7 @@
+@@ -16075,7 +16155,7 @@
  
  					n->expr = (Expr *) $3;
  					n->output = NULL;
@@ -4194,7 +4269,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_SERIALIZE '(' json_value_expr json_returning_clause_opt ')'
-@@ -16084,7 +16138,7 @@
+@@ -16084,7 +16164,7 @@
  
  					n->expr = (JsonValueExpr *) $3;
  					n->output = (JsonOutput *) $4;
@@ -4203,7 +4278,7 @@
  					$$ = (Node *) n;
  				}
  			| MERGE_ACTION '(' ')'
-@@ -16092,7 +16146,7 @@
+@@ -16092,7 +16172,7 @@
  					MergeSupportFunc *m = makeNode(MergeSupportFunc);
  
  					m->msftype = TEXTOID;
@@ -4212,7 +4287,7 @@
  					$$ = (Node *) m;
  				}
  			| JSON_QUERY '('
-@@ -16114,7 +16168,7 @@
+@@ -16114,7 +16194,7 @@
  					n->quotes = $9;
  					n->on_empty = (JsonBehavior *) linitial($10);
  					n->on_error = (JsonBehavior *) lsecond($10);
@@ -4221,7 +4296,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_EXISTS '('
-@@ -16130,7 +16184,7 @@
+@@ -16130,7 +16210,7 @@
  					n->passing = $6;
  					n->output = NULL;
  					n->on_error = (JsonBehavior *) $7;
@@ -4230,7 +4305,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_VALUE '('
-@@ -16148,7 +16202,7 @@
+@@ -16148,7 +16228,7 @@
  					n->output = (JsonOutput *) $7;
  					n->on_empty = (JsonBehavior *) linitial($8);
  					n->on_error = (JsonBehavior *) lsecond($8);
@@ -4239,7 +4314,7 @@
  					$$ = (Node *) n;
  				}
  			;
-@@ -16186,7 +16240,8 @@
+@@ -16186,7 +16266,8 @@
  					$$->name = $3;
  					$$->indirection = NIL;
  					$$->val = (Node *) $1;
@@ -4249,7 +4324,7 @@
  				}
  			| a_expr
  				{
-@@ -16194,7 +16249,8 @@
+@@ -16194,7 +16275,8 @@
  					$$->name = NULL;
  					$$->indirection = NIL;
  					$$->val = (Node *) $1;
@@ -4259,7 +4334,7 @@
  				}
  		;
  
-@@ -16289,7 +16345,7 @@
+@@ -16289,7 +16371,7 @@
  					n->frameOptions = FRAMEOPTION_DEFAULTS;
  					n->startOffset = NULL;
  					n->endOffset = NULL;
@@ -4268,7 +4343,7 @@
  					$$ = n;
  				}
  			| /*EMPTY*/
-@@ -16309,7 +16365,7 @@
+@@ -16309,7 +16391,7 @@
  					n->frameOptions = $5->frameOptions;
  					n->startOffset = $5->startOffset;
  					n->endOffset = $5->endOffset;
@@ -4277,7 +4352,7 @@
  					$$ = n;
  				}
  		;
-@@ -16381,12 +16437,12 @@
+@@ -16381,12 +16463,12 @@
  						ereport(ERROR,
  								(errcode(ERRCODE_WINDOWING_ERROR),
  								 errmsg("frame start cannot be UNBOUNDED FOLLOWING"),
@@ -4292,7 +4367,7 @@
  					n->frameOptions |= FRAMEOPTION_END_CURRENT_ROW;
  					$$ = n;
  				}
-@@ -16405,25 +16461,25 @@
+@@ -16405,25 +16487,25 @@
  						ereport(ERROR,
  								(errcode(ERRCODE_WINDOWING_ERROR),
  								 errmsg("frame start cannot be UNBOUNDED FOLLOWING"),
@@ -4322,7 +4397,7 @@
  					n1->frameOptions = frameOptions;
  					n1->endOffset = n2->startOffset;
  					$$ = n1;
-@@ -16605,7 +16661,7 @@
+@@ -16605,7 +16687,7 @@
  					na->name = $1;
  					na->arg = (Expr *) $3;
  					na->argnumber = -1;		/* until determined */
@@ -4331,7 +4406,7 @@
  					$$ = (Node *) na;
  				}
  			| param_name EQUALS_GREATER a_expr
-@@ -16615,7 +16671,7 @@
+@@ -16615,7 +16697,7 @@
  					na->name = $1;
  					na->arg = (Expr *) $3;
  					na->argnumber = -1;		/* until determined */
@@ -4340,7 +4415,7 @@
  					$$ = (Node *) na;
  				}
  		;
-@@ -16630,15 +16686,15 @@
+@@ -16630,15 +16712,15 @@
  
  array_expr: '[' expr_list ']'
  				{
@@ -4359,7 +4434,7 @@
  				}
  		;
  
-@@ -16650,11 +16706,11 @@
+@@ -16650,11 +16732,11 @@
  extract_list:
  			extract_arg FROM a_expr
  				{
@@ -4373,7 +4448,24 @@
  				}
  		;
  
-@@ -16790,7 +16846,7 @@
+@@ -16751,7 +16833,7 @@
+ 					 */
+ 					$$ = list_make3($1, makeIntConst(1, -1),
+ 									makeTypeCast($3,
+-												 SystemTypeName("int4"), -1));
++												 SystemTypeName("int4"), -1, -1));
+ 				}
+ 			| a_expr SIMILAR a_expr ESCAPE a_expr
+ 				{
+@@ -16770,6 +16852,7 @@
+ 
+ 					n->subselect = $1;
+ 					/* other fields will be filled later */
++					n->location_end = @$.end;
+ 					$$ = (Node *) n;
+ 				}
+ 			| '(' expr_list ')'						{ $$ = (Node *) $2; }
+@@ -16790,7 +16873,7 @@
  					c->arg = (Expr *) $2;
  					c->args = $3;
  					c->defresult = (Expr *) $4;
@@ -4382,7 +4474,7 @@
  					$$ = (Node *) c;
  				}
  		;
-@@ -16808,7 +16864,7 @@
+@@ -16808,7 +16891,7 @@
  
  					w->expr = (Expr *) $2;
  					w->result = (Expr *) $4;
@@ -4391,7 +4483,7 @@
  					$$ = (Node *) w;
  				}
  		;
-@@ -16824,11 +16880,11 @@
+@@ -16824,11 +16907,11 @@
  
  columnref:	ColId
  				{
@@ -4405,7 +4497,7 @@
  				}
  		;
  
-@@ -16917,9 +16973,9 @@
+@@ -16917,9 +17000,9 @@
  
  json_behavior:
  			DEFAULT a_expr
@@ -4417,7 +4509,7 @@
  		;
  
  json_behavior_type:
-@@ -16977,11 +17033,11 @@
+@@ -16977,11 +17060,11 @@
  								errcode(ERRCODE_INVALID_PARAMETER_VALUE),
  								errmsg("unrecognized JSON encoding: %s", $4));
  
@@ -4431,7 +4523,7 @@
  				}
  		;
  
-@@ -17102,7 +17158,7 @@
+@@ -17102,7 +17185,7 @@
  					n->constructor = makeNode(JsonAggConstructor);
  					n->constructor->output = (JsonOutput *) $6;
  					n->constructor->agg_order = NULL;
@@ -4440,7 +4532,7 @@
  					$$ = (Node *) n;
  				}
  			| JSON_ARRAYAGG '('
-@@ -17119,7 +17175,7 @@
+@@ -17119,7 +17202,7 @@
  					n->constructor = makeNode(JsonAggConstructor);
  					n->constructor->agg_order = $4;
  					n->constructor->output = (JsonOutput *) $6;
@@ -4449,7 +4541,7 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -17150,7 +17206,8 @@
+@@ -17150,7 +17233,8 @@
  					$$->name = $3;
  					$$->indirection = NIL;
  					$$->val = (Node *) $1;
@@ -4459,7 +4551,7 @@
  				}
  			| a_expr BareColLabel
  				{
-@@ -17158,7 +17215,8 @@
+@@ -17158,7 +17242,8 @@
  					$$->name = $2;
  					$$->indirection = NIL;
  					$$->val = (Node *) $1;
@@ -4469,7 +4561,7 @@
  				}
  			| a_expr
  				{
-@@ -17166,20 +17224,23 @@
+@@ -17166,20 +17251,23 @@
  					$$->name = NULL;
  					$$->indirection = NIL;
  					$$->val = (Node *) $1;
@@ -4496,7 +4588,7 @@
  				}
  		;
  
-@@ -17205,11 +17266,11 @@
+@@ -17205,11 +17293,11 @@
  qualified_name:
  			ColId
  				{
@@ -4510,7 +4602,7 @@
  				}
  		;
  
-@@ -17249,19 +17310,19 @@
+@@ -17249,19 +17337,19 @@
   */
  AexprConst: Iconst
  				{
@@ -4534,7 +4626,7 @@
  				}
  			| XCONST
  				{
-@@ -17270,15 +17331,15 @@
+@@ -17270,15 +17358,15 @@
  					 * a <general literal> shall not be a
  					 * <bit string literal> or a <hex string literal>.
  					 */
@@ -4553,7 +4645,7 @@
  				}
  			| func_name '(' func_arg_list opt_sort_clause ')' Sconst
  				{
-@@ -17306,18 +17367,18 @@
+@@ -17306,18 +17394,18 @@
  							ereport(ERROR,
  									(errcode(ERRCODE_SYNTAX_ERROR),
  									 errmsg("type modifier cannot have ORDER BY"),
@@ -4577,7 +4669,7 @@
  				}
  			| func_name '(' func_arg_list opt_sort_clause ')' PARAM
  				{
-@@ -17345,59 +17406,59 @@
+@@ -17345,59 +17433,59 @@
  							ereport(ERROR,
  									(errcode(ERRCODE_SYNTAX_ERROR),
  									 errmsg("type modifier cannot have ORDER BY"),
@@ -4651,7 +4743,7 @@
  				}
  		;
  
-@@ -17424,28 +17485,28 @@
+@@ -17424,28 +17512,28 @@
  									(errcode(ERRCODE_RESERVED_NAME),
  									 errmsg("role name \"%s\" is reserved",
  											"public"),
@@ -4684,7 +4776,7 @@
  							break;
  					}
  				}
-@@ -17461,7 +17522,7 @@
+@@ -17461,7 +17549,7 @@
  
  					if (strcmp($1, "public") == 0)
  					{
@@ -4693,7 +4785,7 @@
  						n->roletype = ROLESPEC_PUBLIC;
  					}
  					else if (strcmp($1, "none") == 0)
-@@ -17470,26 +17531,26 @@
+@@ -17470,26 +17558,26 @@
  								(errcode(ERRCODE_RESERVED_NAME),
  								 errmsg("role name \"%s\" is reserved",
  										"none"),
@@ -4725,7 +4817,7 @@
  				}
  		;
  
-@@ -17537,7 +17598,7 @@
+@@ -17537,7 +17625,7 @@
  						n->limitOption = $9->limitOption;
  					}
  					n->lockingClause = $10;
@@ -4734,7 +4826,7 @@
  				}
  		;
  
-@@ -17553,7 +17614,7 @@
+@@ -17553,7 +17641,7 @@
  					n->indirection = check_indirection($2, yyscanner);
  					/* nnames will be filled by calling production */
  					n->val = (SelectStmt *) $4;
@@ -4743,7 +4835,7 @@
  					$$ = (Node *) n;
  				}
  		;
-@@ -18666,7 +18727,79 @@
+@@ -18666,7 +18754,79 @@
  	rs->stmt_len = end_location - rs->stmt_location;
  }
  
@@ -4823,7 +4915,7 @@
  makeColumnRef(char *colname, List *indirection,
  			  int location, core_yyscan_t yyscanner)
  {
-@@ -18681,6 +18814,7 @@
+@@ -18681,6 +18841,7 @@
  	ListCell   *l;
  
  	c->location = location;
@@ -4831,7 +4923,49 @@
  	foreach(l, indirection)
  	{
  		if (IsA(lfirst(l), A_Indices))
-@@ -19623,6 +19757,7 @@
+@@ -18719,13 +18880,14 @@
+ }
+ 
+ static Node *
+-makeTypeCast(Node *arg, TypeName *typename, int location)
++makeTypeCast(Node *arg, TypeName *typename, int location, int location_end)
+ {
+ 	TypeCast   *n = makeNode(TypeCast);
+ 
+ 	n->arg = arg;
+ 	n->typeName = typename;
+ 	n->location = location;
++	n->location_end = location_end;
+ 	return (Node *) n;
+ }
+ 
+@@ -18734,7 +18896,7 @@
+ {
+ 	Node	   *s = makeStringConst(str, location);
+ 
+-	return makeTypeCast(s, typename, -1);
++	return makeTypeCast(s, typename, -1, -1);
+ }
+ 
+ static Node *
+@@ -18835,7 +18997,7 @@
+ makeParamRefCast(int number, int location, TypeName *typename)
+ {
+ 	Node *p = makeParamRef(number, location);
+-	return makeTypeCast(p, typename, -1);
++	return makeTypeCast(p, typename, -1, -1);
+ }
+ 
+ /* makeRoleSpec
+@@ -19607,6 +19769,7 @@
+ 	cte->ctematerialized = CTEMaterializeDefault;
+ 	cte->ctequery = query;
+ 	cte->location = -1;
++	cte->location_end = -1;
+ 
+ 	/* create WITH clause and attach CTE */
+ 	w->recursive = true;
+@@ -19623,6 +19786,7 @@
  		rt->indirection = NIL;
  		rt->val = makeColumnRef(strVal(lfirst(lc)), NIL, -1, 0);
  		rt->location = -1;
@@ -5053,7 +5187,15 @@
  } ColumnRef;
  
  /*
-@@ -434,6 +435,9 @@
+@@ -373,6 +374,7 @@
+ 	Node	   *arg;			/* the expression being casted */
+ 	TypeName   *typeName;		/* the target type */
+ 	ParseLoc	location;		/* token location, or -1 if unknown */
++	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+ } TypeCast;
+ 
+ /*
+@@ -434,6 +436,9 @@
  	bool		func_variadic;	/* last argument was labeled VARIADIC */
  	CoercionForm funcformat;	/* how to display this node */
  	ParseLoc	location;		/* token location, or -1 if unknown */
@@ -5063,7 +5205,7 @@
  } FuncCall;
  
  /*
-@@ -518,6 +522,7 @@
+@@ -518,6 +523,7 @@
  	List	   *indirection;	/* subscripts, field names, and '*', or NIL */
  	Node	   *val;			/* the value expression to compute or assign */
  	ParseLoc	location;		/* token location, or -1 if unknown */
@@ -5071,7 +5213,24 @@
  } ResTarget;
  
  /*
-@@ -2160,6 +2165,9 @@
+@@ -618,6 +624,8 @@
+ 	bool		lateral;		/* does it have LATERAL prefix? */
+ 	Node	   *subquery;		/* the untransformed sub-select clause */
+ 	Alias	   *alias;			/* table alias & optional column aliases */
++	ParseLoc	location;		/* token location, or -1 if unknown */
++	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+ } RangeSubselect;
+ 
+ /*
+@@ -1699,6 +1707,7 @@
+ 	List	   *ctecoltypmods pg_node_attr(query_jumble_ignore);
+ 	/* OID list of column collation OIDs */
+ 	List	   *ctecolcollations pg_node_attr(query_jumble_ignore);
++	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+ } CommonTableExpr;
+ 
+ /* Convenience macro to get the output tlist of a CTE's query */
+@@ -2160,6 +2169,9 @@
  	struct SelectStmt *larg;	/* left child */
  	struct SelectStmt *rarg;	/* right child */
  	/* Eventually add fields for CORRESPONDING spec here */
@@ -5102,6 +5261,41 @@
  } RangeVar;
  
  typedef enum TableFuncType
+@@ -1016,6 +1021,7 @@
+ 	/* subselect as Query* or raw parsetree */
+ 	Node	   *subselect;
+ 	ParseLoc	location;		/* token location, or -1 if unknown */
++	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+ } SubLink;
+ 
+ /*
+@@ -1492,6 +1498,7 @@
+ 	List	   *args;
+ 	/* token location, or -1 if unknown */
+ 	ParseLoc	location;
++	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+ } CoalesceExpr;
+ 
+ /*
+@@ -1960,6 +1967,7 @@
+ 	/* T to perform field-by-field null checks */
+ 	bool		argisrow pg_node_attr(query_jumble_ignore);
+ 	ParseLoc	location;		/* token location, or -1 if unknown */
++	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+ } NullTest;
+ 
+ /*
+@@ -2291,6 +2299,10 @@
+ 	Alias	   *alias pg_node_attr(query_jumble_ignore);
+ 	/* RT index assigned for join, or 0 */
+ 	int			rtindex;
++	/* start of the joined table expression, or -1 if unknown */
++	ParseLoc	location;
++	/* end of the joined table expression (exclusive), or -1 if unknown */
++	ParseLoc	location_end;
+ } JoinExpr;
+ 
+ /*----------
 --- a/src/include/parser/scanner.h
 +++ b/src/include/parser/scanner.h
 @@ -36,13 +36,18 @@

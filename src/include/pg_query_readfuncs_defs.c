@@ -546,6 +546,7 @@ _readSubLink(OUT_TYPE(SubLink, SubLink) msg)
   READ_LIST_FIELD(oper_name, operName, operName);
   READ_NODE_PTR_FIELD(subselect, subselect, subselect);
   READ_INT_FIELD(location, location, location);
+  READ_INT_FIELD(location_end, location_end, location_end);
   return node;
 }
 
@@ -742,6 +743,7 @@ _readCoalesceExpr(OUT_TYPE(CoalesceExpr, CoalesceExpr) msg)
   READ_UINT_FIELD(coalescecollid, coalescecollid, coalescecollid);
   READ_LIST_FIELD(args, args, args);
   READ_INT_FIELD(location, location, location);
+  READ_INT_FIELD(location_end, location_end, location_end);
   return node;
 }
 
@@ -914,6 +916,7 @@ _readNullTest(OUT_TYPE(NullTest, NullTest) msg)
   READ_ENUM_FIELD(NullTestType, nulltesttype, nulltesttype, nulltesttype);
   READ_BOOL_FIELD(argisrow, argisrow, argisrow);
   READ_INT_FIELD(location, location, location);
+  READ_INT_FIELD(location_end, location_end, location_end);
   return node;
 }
 
@@ -1039,6 +1042,8 @@ _readJoinExpr(OUT_TYPE(JoinExpr, JoinExpr) msg)
   READ_NODE_PTR_FIELD(quals, quals, quals);
   READ_SPECIFIC_NODE_PTR_FIELD(Alias, alias, alias, alias, alias);
   READ_INT_FIELD(rtindex, rtindex, rtindex);
+  READ_INT_FIELD(location, location, location);
+  READ_INT_FIELD(location_end, location_end, location_end);
   return node;
 }
 
@@ -1168,6 +1173,7 @@ _readTypeCast(OUT_TYPE(TypeCast, TypeCast) msg)
   READ_NODE_PTR_FIELD(arg, arg, arg);
   READ_SPECIFIC_NODE_PTR_FIELD(TypeName, type_name, type_name, typeName, typeName);
   READ_INT_FIELD(location, location, location);
+  READ_INT_FIELD(location_end, location_end, location_end);
   return node;
 }
 
@@ -1303,6 +1309,8 @@ _readRangeSubselect(OUT_TYPE(RangeSubselect, RangeSubselect) msg)
   READ_BOOL_FIELD(lateral, lateral, lateral);
   READ_NODE_PTR_FIELD(subquery, subquery, subquery);
   READ_SPECIFIC_NODE_PTR_FIELD(Alias, alias, alias, alias, alias);
+  READ_INT_FIELD(location, location, location);
+  READ_INT_FIELD(location_end, location_end, location_end);
   return node;
 }
 
@@ -1729,6 +1737,7 @@ _readCommonTableExpr(OUT_TYPE(CommonTableExpr, CommonTableExpr) msg)
   READ_LIST_FIELD(ctecoltypes, ctecoltypes, ctecoltypes);
   READ_LIST_FIELD(ctecoltypmods, ctecoltypmods, ctecoltypmods);
   READ_LIST_FIELD(ctecolcollations, ctecolcollations, ctecolcollations);
+  READ_INT_FIELD(location_end, location_end, location_end);
   return node;
 }
 

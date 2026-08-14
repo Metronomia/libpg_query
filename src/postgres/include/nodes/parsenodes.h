@@ -374,6 +374,7 @@ typedef struct TypeCast
 	Node	   *arg;			/* the expression being casted */
 	TypeName   *typeName;		/* the target type */
 	ParseLoc	location;		/* token location, or -1 if unknown */
+	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
 } TypeCast;
 
 /*
@@ -623,6 +624,8 @@ typedef struct RangeSubselect
 	bool		lateral;		/* does it have LATERAL prefix? */
 	Node	   *subquery;		/* the untransformed sub-select clause */
 	Alias	   *alias;			/* table alias & optional column aliases */
+	ParseLoc	location;		/* token location, or -1 if unknown */
+	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
 } RangeSubselect;
 
 /*
@@ -1704,6 +1707,7 @@ typedef struct CommonTableExpr
 	List	   *ctecoltypmods pg_node_attr(query_jumble_ignore);
 	/* OID list of column collation OIDs */
 	List	   *ctecolcollations pg_node_attr(query_jumble_ignore);
+	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
 } CommonTableExpr;
 
 /* Convenience macro to get the output tlist of a CTE's query */

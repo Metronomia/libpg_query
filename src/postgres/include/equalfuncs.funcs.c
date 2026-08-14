@@ -332,6 +332,7 @@ _equalSubLink(const SubLink *a, const SubLink *b)
 	COMPARE_NODE_FIELD(operName);
 	COMPARE_NODE_FIELD(subselect);
 	COMPARE_LOCATION_FIELD(location);
+	COMPARE_LOCATION_FIELD(location_end);
 
 	return true;
 }
@@ -523,6 +524,7 @@ _equalCoalesceExpr(const CoalesceExpr *a, const CoalesceExpr *b)
 	COMPARE_SCALAR_FIELD(coalescecollid);
 	COMPARE_NODE_FIELD(args);
 	COMPARE_LOCATION_FIELD(location);
+	COMPARE_LOCATION_FIELD(location_end);
 
 	return true;
 }
@@ -696,6 +698,7 @@ _equalNullTest(const NullTest *a, const NullTest *b)
 	COMPARE_SCALAR_FIELD(nulltesttype);
 	COMPARE_SCALAR_FIELD(argisrow);
 	COMPARE_LOCATION_FIELD(location);
+	COMPARE_LOCATION_FIELD(location_end);
 
 	return true;
 }
@@ -820,6 +823,8 @@ _equalJoinExpr(const JoinExpr *a, const JoinExpr *b)
 	COMPARE_NODE_FIELD(quals);
 	COMPARE_NODE_FIELD(alias);
 	COMPARE_SCALAR_FIELD(rtindex);
+	COMPARE_LOCATION_FIELD(location);
+	COMPARE_LOCATION_FIELD(location_end);
 
 	return true;
 }
@@ -949,6 +954,7 @@ _equalTypeCast(const TypeCast *a, const TypeCast *b)
 	COMPARE_NODE_FIELD(arg);
 	COMPARE_NODE_FIELD(typeName);
 	COMPARE_LOCATION_FIELD(location);
+	COMPARE_LOCATION_FIELD(location_end);
 
 	return true;
 }
@@ -1083,6 +1089,8 @@ _equalRangeSubselect(const RangeSubselect *a, const RangeSubselect *b)
 	COMPARE_SCALAR_FIELD(lateral);
 	COMPARE_NODE_FIELD(subquery);
 	COMPARE_NODE_FIELD(alias);
+	COMPARE_LOCATION_FIELD(location);
+	COMPARE_LOCATION_FIELD(location_end);
 
 	return true;
 }
@@ -1509,6 +1517,7 @@ _equalCommonTableExpr(const CommonTableExpr *a, const CommonTableExpr *b)
 	COMPARE_NODE_FIELD(ctecoltypes);
 	COMPARE_NODE_FIELD(ctecoltypmods);
 	COMPARE_NODE_FIELD(ctecolcollations);
+	COMPARE_LOCATION_FIELD(location_end);
 
 	return true;
 }

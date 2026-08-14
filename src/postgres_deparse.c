@@ -3145,6 +3145,9 @@ void deparseNodeOpts(StringInfo str, struct Node *node, PostgresDeparseOpts opts
 		case T_JoinExpr:
 			deparseJoinExpr(state, castNode(JoinExpr, node));
 			break;
+		case T_RangeSubselect:
+			deparseRangeSubselect(state, castNode(RangeSubselect, node));
+			break;
 		case T_SortBy:
 			deparseSortBy(state, castNode(SortBy, node));
 			break;

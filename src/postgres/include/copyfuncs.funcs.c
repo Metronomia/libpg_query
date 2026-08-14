@@ -373,6 +373,7 @@ _copySubLink(const SubLink *from)
 	COPY_NODE_FIELD(operName);
 	COPY_NODE_FIELD(subselect);
 	COPY_LOCATION_FIELD(location);
+	COPY_LOCATION_FIELD(location_end);
 
 	return newnode;
 }
@@ -601,6 +602,7 @@ _copyCoalesceExpr(const CoalesceExpr *from)
 	COPY_SCALAR_FIELD(coalescecollid);
 	COPY_NODE_FIELD(args);
 	COPY_LOCATION_FIELD(location);
+	COPY_LOCATION_FIELD(location_end);
 
 	return newnode;
 }
@@ -802,6 +804,7 @@ _copyNullTest(const NullTest *from)
 	COPY_SCALAR_FIELD(nulltesttype);
 	COPY_SCALAR_FIELD(argisrow);
 	COPY_LOCATION_FIELD(location);
+	COPY_LOCATION_FIELD(location_end);
 
 	return newnode;
 }
@@ -949,6 +952,8 @@ _copyJoinExpr(const JoinExpr *from)
 	COPY_NODE_FIELD(quals);
 	COPY_NODE_FIELD(alias);
 	COPY_SCALAR_FIELD(rtindex);
+	COPY_LOCATION_FIELD(location);
+	COPY_LOCATION_FIELD(location_end);
 
 	return newnode;
 }
@@ -1095,6 +1100,7 @@ _copyTypeCast(const TypeCast *from)
 	COPY_NODE_FIELD(arg);
 	COPY_NODE_FIELD(typeName);
 	COPY_LOCATION_FIELD(location);
+	COPY_LOCATION_FIELD(location_end);
 
 	return newnode;
 }
@@ -1254,6 +1260,8 @@ _copyRangeSubselect(const RangeSubselect *from)
 	COPY_SCALAR_FIELD(lateral);
 	COPY_NODE_FIELD(subquery);
 	COPY_NODE_FIELD(alias);
+	COPY_LOCATION_FIELD(location);
+	COPY_LOCATION_FIELD(location_end);
 
 	return newnode;
 }
@@ -1742,6 +1750,7 @@ _copyCommonTableExpr(const CommonTableExpr *from)
 	COPY_NODE_FIELD(ctecoltypes);
 	COPY_NODE_FIELD(ctecoltypmods);
 	COPY_NODE_FIELD(ctecolcollations);
+	COPY_LOCATION_FIELD(location_end);
 
 	return newnode;
 }

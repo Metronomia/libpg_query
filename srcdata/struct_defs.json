@@ -530,6 +530,11 @@
           "name": "location",
           "c_type": "ParseLoc",
           "comment": "/* token location, or -1 if unknown */"
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of construct (excl), or -1 if unknown */"
         }
       ],
       "comment": "/*\n * TypeCast - a CAST expression\n */\n"
@@ -905,6 +910,16 @@
           "name": "alias",
           "c_type": "Alias*",
           "comment": "/* table alias & optional column aliases */"
+        },
+        {
+          "name": "location",
+          "c_type": "ParseLoc",
+          "comment": "/* token location, or -1 if unknown */"
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of construct (excl), or -1 if unknown */"
         }
       ],
       "comment": "/*\n * RangeSubselect - subquery appearing in a FROM clause\n */\n"
@@ -2551,6 +2566,11 @@
           "name": "ctecolcollations",
           "c_type": "List*",
           "comment": null
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of construct (excl), or -1 if unknown */"
         }
       ],
       "comment": null
@@ -8926,6 +8946,11 @@
           "name": "location",
           "c_type": "ParseLoc",
           "comment": "/* token location, or -1 if unknown */"
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of construct (excl), or -1 if unknown */"
         }
       ],
       "comment": "/*\n * SubLink\n *\n * A SubLink represents a subselect appearing in an expression, and in some\n * cases also the combining operator(s) just above it.  The subLinkType\n * indicates the form of the expression represented:\n *\tEXISTS_SUBLINK\t\tEXISTS(SELECT ...)\n *\tALL_SUBLINK\t\t\t(lefthand) op ALL (SELECT ...)\n *\tANY_SUBLINK\t\t\t(lefthand) op ANY (SELECT ...)\n *\tROWCOMPARE_SUBLINK\t(lefthand) op (SELECT ...)\n *\tEXPR_SUBLINK\t\t(SELECT with single targetlist item ...)\n *\tMULTIEXPR_SUBLINK\t(SELECT with multiple targetlist items ...)\n *\tARRAY_SUBLINK\t\tARRAY(SELECT with single targetlist item ...)\n *\tCTE_SUBLINK\t\t\tWITH query (never actually part of an expression)\n * For ALL, ANY, and ROWCOMPARE, the lefthand is a list of expressions of the\n * same length as the subselect's targetlist.  ROWCOMPARE will *always* have\n * a list with more than one entry; if the subselect has just one target\n * then the parser will create an EXPR_SUBLINK instead (and any operator\n * above the subselect will be represented separately).\n * ROWCOMPARE, EXPR, and MULTIEXPR require the subselect to deliver at most\n * one row (if it returns no rows, the result is NULL).\n * ALL, ANY, and ROWCOMPARE require the combining operators to deliver boolean\n * results.  ALL and ANY combine the per-row results using AND and OR\n * semantics respectively.\n * ARRAY requires just one target column, and creates an array of the target\n * column's type using any number of rows resulting from the subselect.\n *\n * SubLink is classed as an Expr node, but it is not actually executable;\n * it must be replaced in the expression tree by a SubPlan node during\n * planning.\n *\n * NOTE: in the raw output of gram.y, testexpr contains just the raw form\n * of the lefthand expression (if any), and operName is the String name of\n * the combining operator.  Also, subselect is a raw parsetree.  During parse\n * analysis, the parser transforms testexpr into a complete boolean expression\n * that compares the lefthand value(s) to PARAM_SUBLINK nodes representing the\n * output columns of the subselect.  And subselect is transformed to a Query.\n * This is the representation seen in saved rules and in the rewriter.\n *\n * In EXISTS, EXPR, MULTIEXPR, and ARRAY SubLinks, testexpr and operName\n * are unused and are always null.\n *\n * subLinkId is currently used only for MULTIEXPR SubLinks, and is zero in\n * other SubLinks.  This number identifies different multiple-assignment\n * subqueries within an UPDATE statement's SET list.  It is unique only\n * within a particular targetlist.  The output column(s) of the MULTIEXPR\n * are referenced by PARAM_MULTIEXPR Params appearing elsewhere in the tlist.\n *\n * The CTE_SUBLINK case never occurs in actual SubLink nodes, but it is used\n * in SubPlans generated for WITH subqueries.\n */\n"
@@ -9677,6 +9702,11 @@
           "name": "location",
           "c_type": "ParseLoc",
           "comment": null
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of construct (excl), or -1 if unknown */"
         }
       ],
       "comment": "/*\n * CoalesceExpr - a COALESCE expression\n */\n"
@@ -10361,6 +10391,11 @@
           "name": "location",
           "c_type": "ParseLoc",
           "comment": "/* token location, or -1 if unknown */"
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of construct (excl), or -1 if unknown */"
         }
       ],
       "comment": "/* ----------------\n * NullTest\n *\n * NullTest represents the operation of testing a value for NULLness.\n * The appropriate test is performed and returned as a boolean Datum.\n *\n * When argisrow is false, this simply represents a test for the null value.\n *\n * When argisrow is true, the input expression must yield a rowtype, and\n * the node implements \"row IS [NOT] NULL\" per the SQL standard.  This\n * includes checking individual fields for NULLness when the row datum\n * itself isn't NULL.\n *\n * NOTE: the combination of a rowtype input and argisrow==false does NOT\n * correspond to the SQL notation \"row IS [NOT] NULL\"; instead, this case\n * represents the SQL notation \"row IS [NOT] DISTINCT FROM NULL\".\n * ----------------\n */\n"
@@ -10785,6 +10820,22 @@
         {
           "name": "rtindex",
           "c_type": "int",
+          "comment": null
+        },
+        {
+          "comment": "\t/* start of the joined table expression, or -1 if unknown */\n"
+        },
+        {
+          "name": "location",
+          "c_type": "ParseLoc",
+          "comment": null
+        },
+        {
+          "comment": "\t/* end of the joined table expression (exclusive), or -1 if unknown */\n"
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
           "comment": null
         }
       ],

@@ -1090,7 +1090,7 @@
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 233 "gram.y"
+#line 253 "gram.y"
 {
 	core_YYSTYPE core_yystype;
 	/* these fields must match core_YYSTYPE: */
