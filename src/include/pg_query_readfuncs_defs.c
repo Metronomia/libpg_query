@@ -533,6 +533,9 @@ _readBoolExpr(OUT_TYPE(BoolExpr, BoolExpr) msg)
   READ_ENUM_FIELD(BoolExprType, boolop, boolop, boolop);
   READ_LIST_FIELD(args, args, args);
   READ_INT_FIELD(location, location, location);
+  READ_INT_FIELD(location_end, location_end, location_end);
+  READ_INT_FIELD(outer_location, outer_location, outer_location);
+  READ_INT_FIELD(outer_location_end, outer_location_end, outer_location_end);
   return node;
 }
 
@@ -1163,6 +1166,9 @@ _readAExpr(OUT_TYPE(A_Expr, AExpr) msg)
   READ_NODE_PTR_FIELD(lexpr, lexpr, lexpr);
   READ_NODE_PTR_FIELD(rexpr, rexpr, rexpr);
   READ_INT_FIELD(location, location, location);
+  READ_INT_FIELD(location_end, location_end, location_end);
+  READ_INT_FIELD(outer_location, outer_location, outer_location);
+  READ_INT_FIELD(outer_location_end, outer_location_end, outer_location_end);
   return node;
 }
 

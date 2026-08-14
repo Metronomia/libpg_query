@@ -61,6 +61,9 @@ makeA_Expr(A_Expr_Kind kind, List *name,
 	a->lexpr = lexpr;
 	a->rexpr = rexpr;
 	a->location = location;
+	a->location_end = -1;
+	a->outer_location = -1;
+	a->outer_location_end = -1;
 	return a;
 }
 
@@ -79,6 +82,9 @@ makeSimpleA_Expr(A_Expr_Kind kind, char *name,
 	a->lexpr = lexpr;
 	a->rexpr = rexpr;
 	a->location = location;
+	a->location_end = -1;
+	a->outer_location = -1;
+	a->outer_location_end = -1;
 	return a;
 }
 
@@ -169,6 +175,9 @@ makeBoolExpr(BoolExprType boolop, List *args, int location)
 	b->boolop = boolop;
 	b->args = args;
 	b->location = location;
+	b->location_end = -1;
+	b->outer_location = -1;
+	b->outer_location_end = -1;
 
 	return (Expr *) b;
 }

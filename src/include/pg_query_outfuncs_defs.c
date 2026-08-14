@@ -496,6 +496,9 @@ _outBoolExpr(OUT_TYPE(BoolExpr, BoolExpr) out, const BoolExpr *node)
   WRITE_ENUM_FIELD(BoolExprType, boolop, boolop, boolop);
   WRITE_LIST_FIELD(args, args, args);
   WRITE_INT_FIELD(location, location, location);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
+  WRITE_INT_FIELD(outer_location, outer_location, outer_location);
+  WRITE_INT_FIELD(outer_location_end, outer_location_end, outer_location_end);
 }
 
 static void
@@ -1028,6 +1031,9 @@ _outAExpr(OUT_TYPE(A_Expr, AExpr) out, const A_Expr *node)
   WRITE_NODE_PTR_FIELD(lexpr, lexpr, lexpr);
   WRITE_NODE_PTR_FIELD(rexpr, rexpr, rexpr);
   WRITE_INT_FIELD(location, location, location);
+  WRITE_INT_FIELD(location_end, location_end, location_end);
+  WRITE_INT_FIELD(outer_location, outer_location, outer_location);
+  WRITE_INT_FIELD(outer_location_end, outer_location_end, outer_location_end);
 }
 
 static void

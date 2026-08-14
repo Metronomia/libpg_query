@@ -358,6 +358,9 @@ _copyBoolExpr(const BoolExpr *from)
 	COPY_SCALAR_FIELD(boolop);
 	COPY_NODE_FIELD(args);
 	COPY_LOCATION_FIELD(location);
+	COPY_LOCATION_FIELD(location_end);
+	COPY_LOCATION_FIELD(outer_location);
+	COPY_LOCATION_FIELD(outer_location_end);
 
 	return newnode;
 }
@@ -1088,6 +1091,9 @@ _copyA_Expr(const A_Expr *from)
 	COPY_NODE_FIELD(lexpr);
 	COPY_NODE_FIELD(rexpr);
 	COPY_LOCATION_FIELD(location);
+	COPY_LOCATION_FIELD(location_end);
+	COPY_LOCATION_FIELD(outer_location);
+	COPY_LOCATION_FIELD(outer_location_end);
 
 	return newnode;
 }

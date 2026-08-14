@@ -2709,10 +2709,13 @@ struct  PgQuery__BoolExpr
   size_t n_args;
   PgQuery__Node **args;
   int32_t location;
+  int32_t location_end;
+  int32_t outer_location;
+  int32_t outer_location_end;
 };
 #define PG_QUERY__BOOL_EXPR__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&pg_query__bool_expr__descriptor) \
-, NULL, PG_QUERY__BOOL_EXPR_TYPE__BOOL_EXPR_TYPE_UNDEFINED, 0,NULL, 0 }
+, NULL, PG_QUERY__BOOL_EXPR_TYPE__BOOL_EXPR_TYPE_UNDEFINED, 0,NULL, 0, 0, 0, 0 }
 
 
 struct  PgQuery__SubLink
@@ -3521,10 +3524,13 @@ struct  PgQuery__AExpr
   PgQuery__Node *lexpr;
   PgQuery__Node *rexpr;
   int32_t location;
+  int32_t location_end;
+  int32_t outer_location;
+  int32_t outer_location_end;
 };
 #define PG_QUERY__A__EXPR__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&pg_query__a__expr__descriptor) \
-, PG_QUERY__A__EXPR__KIND__A_EXPR_KIND_UNDEFINED, 0,NULL, NULL, NULL, 0 }
+, PG_QUERY__A__EXPR__KIND__A_EXPR_KIND_UNDEFINED, 0,NULL, NULL, NULL, 0, 0, 0, 0 }
 
 
 struct  PgQuery__TypeCast

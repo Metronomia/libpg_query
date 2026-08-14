@@ -319,6 +319,9 @@ _equalBoolExpr(const BoolExpr *a, const BoolExpr *b)
 	COMPARE_SCALAR_FIELD(boolop);
 	COMPARE_NODE_FIELD(args);
 	COMPARE_LOCATION_FIELD(location);
+	COMPARE_LOCATION_FIELD(location_end);
+	COMPARE_LOCATION_FIELD(outer_location);
+	COMPARE_LOCATION_FIELD(outer_location_end);
 
 	return true;
 }
@@ -944,6 +947,9 @@ _equalA_Expr(const A_Expr *a, const A_Expr *b)
 	COMPARE_NODE_FIELD(lexpr);
 	COMPARE_NODE_FIELD(rexpr);
 	COMPARE_LOCATION_FIELD(location);
+	COMPARE_LOCATION_FIELD(location_end);
+	COMPARE_LOCATION_FIELD(outer_location);
+	COMPARE_LOCATION_FIELD(outer_location_end);
 
 	return true;
 }

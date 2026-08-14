@@ -18787,7 +18787,7 @@ const ProtobufCMessageDescriptor pg_query__scalar_array_op_expr__descriptor =
   (ProtobufCMessageInit) pg_query__scalar_array_op_expr__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor pg_query__bool_expr__field_descriptors[4] =
+static const ProtobufCFieldDescriptor pg_query__bool_expr__field_descriptors[7] =
 {
   {
     "xpr",
@@ -18837,17 +18837,56 @@ static const ProtobufCFieldDescriptor pg_query__bool_expr__field_descriptors[4] 
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "location_end",
+    5,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(PgQuery__BoolExpr, location_end),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "outer_location",
+    6,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(PgQuery__BoolExpr, outer_location),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "outer_location_end",
+    7,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(PgQuery__BoolExpr, outer_location_end),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned pg_query__bool_expr__field_indices_by_name[] = {
   2,   /* field[2] = args */
   1,   /* field[1] = boolop */
   3,   /* field[3] = location */
+  4,   /* field[4] = location_end */
+  5,   /* field[5] = outer_location */
+  6,   /* field[6] = outer_location_end */
   0,   /* field[0] = xpr */
 };
 static const ProtobufCIntRange pg_query__bool_expr__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 4 }
+  { 0, 7 }
 };
 const ProtobufCMessageDescriptor pg_query__bool_expr__descriptor =
 {
@@ -18857,7 +18896,7 @@ const ProtobufCMessageDescriptor pg_query__bool_expr__descriptor =
   "PgQuery__BoolExpr",
   "pg_query",
   sizeof(PgQuery__BoolExpr),
-  4,
+  7,
   pg_query__bool_expr__field_descriptors,
   pg_query__bool_expr__field_indices_by_name,
   1,  pg_query__bool_expr__number_ranges,
@@ -24159,7 +24198,7 @@ const ProtobufCMessageDescriptor pg_query__param_ref__descriptor =
   (ProtobufCMessageInit) pg_query__param_ref__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor pg_query__a__expr__field_descriptors[5] =
+static const ProtobufCFieldDescriptor pg_query__a__expr__field_descriptors[8] =
 {
   {
     "kind",
@@ -24221,18 +24260,57 @@ static const ProtobufCFieldDescriptor pg_query__a__expr__field_descriptors[5] =
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "location_end",
+    6,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(PgQuery__AExpr, location_end),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "outer_location",
+    7,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(PgQuery__AExpr, outer_location),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "outer_location_end",
+    8,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(PgQuery__AExpr, outer_location_end),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned pg_query__a__expr__field_indices_by_name[] = {
   0,   /* field[0] = kind */
   2,   /* field[2] = lexpr */
   4,   /* field[4] = location */
+  5,   /* field[5] = location_end */
   1,   /* field[1] = name */
+  6,   /* field[6] = outer_location */
+  7,   /* field[7] = outer_location_end */
   3,   /* field[3] = rexpr */
 };
 static const ProtobufCIntRange pg_query__a__expr__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 5 }
+  { 0, 8 }
 };
 const ProtobufCMessageDescriptor pg_query__a__expr__descriptor =
 {
@@ -24242,7 +24320,7 @@ const ProtobufCMessageDescriptor pg_query__a__expr__descriptor =
   "PgQuery__AExpr",
   "pg_query",
   sizeof(PgQuery__AExpr),
-  5,
+  8,
   pg_query__a__expr__field_descriptors,
   pg_query__a__expr__field_indices_by_name,
   1,  pg_query__a__expr__number_ranges,

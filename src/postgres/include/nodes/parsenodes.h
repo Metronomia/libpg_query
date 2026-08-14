@@ -337,6 +337,9 @@ typedef struct A_Expr
 	Node	   *lexpr;			/* left argument, or NULL if none */
 	Node	   *rexpr;			/* right argument, or NULL if none */
 	ParseLoc	location;		/* token location, or -1 if unknown */
+	ParseLoc	location_end;	/* end of construct (excl), or -1 if unknown */
+	ParseLoc	outer_location;	/* start of the whole construct, or -1 when location already starts it */
+	ParseLoc	outer_location_end; /* end of the whole construct (excl), or -1 */
 } A_Expr;
 
 /*

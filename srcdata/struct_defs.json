@@ -505,6 +505,21 @@
           "name": "location",
           "c_type": "ParseLoc",
           "comment": "/* token location, or -1 if unknown */"
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of construct (excl), or -1 if unknown */"
+        },
+        {
+          "name": "outer_location",
+          "c_type": "ParseLoc",
+          "comment": "/* start of the whole construct, or -1 when location already starts it */"
+        },
+        {
+          "name": "outer_location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of the whole construct (excl), or -1 */"
         }
       ],
       "comment": "/*\n * A_Expr - infix, prefix, and postfix expressions\n */\n"
@@ -8900,6 +8915,21 @@
           "name": "location",
           "c_type": "ParseLoc",
           "comment": "/* token location, or -1 if unknown */"
+        },
+        {
+          "name": "location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of construct (excl), or -1 if unknown */"
+        },
+        {
+          "name": "outer_location",
+          "c_type": "ParseLoc",
+          "comment": "/* start of the whole construct, or -1 when location already starts it */"
+        },
+        {
+          "name": "outer_location_end",
+          "c_type": "ParseLoc",
+          "comment": "/* end of the whole construct (excl), or -1 */"
         }
       ],
       "comment": null

@@ -47011,12 +47011,12 @@ yyreduce:
 
   case 1776:
 #line 13328 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, (yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, (yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start), (yyloc)); ;}
     break;
 
   case 1777:
 #line 13330 "gram.y"
-    { (yyval.node) = doNegate((yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start); ;}
+    { (yyval.node) = nodeExtent(doNegate((yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start), (yyloc)); ;}
     break;
 
   case 1778:
@@ -48932,109 +48932,109 @@ yyreduce:
 
   case 2011:
 #line 14927 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, (yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, (yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start), (yyloc)); ;}
     break;
 
   case 2012:
 #line 14929 "gram.y"
-    { (yyval.node) = doNegate((yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start); ;}
+    { (yyval.node) = nodeExtent(doNegate((yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start), (yyloc)); ;}
     break;
 
   case 2013:
 #line 14931 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "+", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2014:
 #line 14933 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "-", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "-", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2015:
 #line 14935 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "*", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "*", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2016:
 #line 14937 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "/", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "/", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2017:
 #line 14939 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "%", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "%", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2018:
 #line 14941 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "^", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "^", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2019:
 #line 14943 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "<", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "<", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2020:
 #line 14945 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, ">", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, ">", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2021:
 #line 14947 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "=", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2022:
 #line 14949 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "<=", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "<=", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2023:
 #line 14951 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, ">=", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, ">=", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2024:
 #line 14953 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "<>", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "<>", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2025:
 #line 14956 "gram.y"
-    { (yyval.node) = (Node *) makeA_Expr(AEXPR_OP, (yyvsp[(2) - (3)].list), (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeA_Expr(AEXPR_OP, (yyvsp[(2) - (3)].list), (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2026:
 #line 14958 "gram.y"
-    { (yyval.node) = (Node *) makeA_Expr(AEXPR_OP, (yyvsp[(1) - (2)].list), NULL, (yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeA_Expr(AEXPR_OP, (yyvsp[(1) - (2)].list), NULL, (yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start), (yyloc)); ;}
     break;
 
   case 2027:
 #line 14961 "gram.y"
-    { (yyval.node) = makeAndExpr((yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent(makeAndExpr((yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2028:
 #line 14963 "gram.y"
-    { (yyval.node) = makeOrExpr((yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent(makeOrExpr((yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2029:
 #line 14965 "gram.y"
-    { (yyval.node) = makeNotExpr((yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start); ;}
+    { (yyval.node) = nodeExtent(makeNotExpr((yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start), (yyloc)); ;}
     break;
 
   case 2030:
 #line 14967 "gram.y"
-    { (yyval.node) = makeNotExpr((yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start); ;}
+    { (yyval.node) = nodeExtent(makeNotExpr((yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start), (yyloc)); ;}
     break;
 
   case 2031:
 #line 14970 "gram.y"
     {
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_LIKE, "~~",
-												   (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_LIKE, "~~",
+												   (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc));
 				;}
     break;
 
@@ -49045,16 +49045,16 @@ yyreduce:
 												 list_make2((yyvsp[(3) - (5)].node), (yyvsp[(5) - (5)].node)),
 												 COERCE_EXPLICIT_CALL,
 												 (yylsp[(2) - (5)]).start), (yyloc));
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_LIKE, "~~",
-												   (yyvsp[(1) - (5)].node), (Node *) n, (yylsp[(2) - (5)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_LIKE, "~~",
+												   (yyvsp[(1) - (5)].node), (Node *) n, (yylsp[(2) - (5)]).start), (yyloc));
 				;}
     break;
 
   case 2033:
 #line 14984 "gram.y"
     {
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_LIKE, "!~~",
-												   (yyvsp[(1) - (4)].node), (yyvsp[(4) - (4)].node), (yylsp[(2) - (4)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_LIKE, "!~~",
+												   (yyvsp[(1) - (4)].node), (yyvsp[(4) - (4)].node), (yylsp[(2) - (4)]).start), (yyloc));
 				;}
     break;
 
@@ -49065,16 +49065,16 @@ yyreduce:
 												 list_make2((yyvsp[(4) - (6)].node), (yyvsp[(6) - (6)].node)),
 												 COERCE_EXPLICIT_CALL,
 												 (yylsp[(2) - (6)]).start), (yyloc));
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_LIKE, "!~~",
-												   (yyvsp[(1) - (6)].node), (Node *) n, (yylsp[(2) - (6)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_LIKE, "!~~",
+												   (yyvsp[(1) - (6)].node), (Node *) n, (yylsp[(2) - (6)]).start), (yyloc));
 				;}
     break;
 
   case 2035:
 #line 14998 "gram.y"
     {
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_ILIKE, "~~*",
-												   (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_ILIKE, "~~*",
+												   (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc));
 				;}
     break;
 
@@ -49085,16 +49085,16 @@ yyreduce:
 												 list_make2((yyvsp[(3) - (5)].node), (yyvsp[(5) - (5)].node)),
 												 COERCE_EXPLICIT_CALL,
 												 (yylsp[(2) - (5)]).start), (yyloc));
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_ILIKE, "~~*",
-												   (yyvsp[(1) - (5)].node), (Node *) n, (yylsp[(2) - (5)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_ILIKE, "~~*",
+												   (yyvsp[(1) - (5)].node), (Node *) n, (yylsp[(2) - (5)]).start), (yyloc));
 				;}
     break;
 
   case 2037:
 #line 15012 "gram.y"
     {
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_ILIKE, "!~~*",
-												   (yyvsp[(1) - (4)].node), (yyvsp[(4) - (4)].node), (yylsp[(2) - (4)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_ILIKE, "!~~*",
+												   (yyvsp[(1) - (4)].node), (yyvsp[(4) - (4)].node), (yylsp[(2) - (4)]).start), (yyloc));
 				;}
     break;
 
@@ -49105,8 +49105,8 @@ yyreduce:
 												 list_make2((yyvsp[(4) - (6)].node), (yyvsp[(6) - (6)].node)),
 												 COERCE_EXPLICIT_CALL,
 												 (yylsp[(2) - (6)]).start), (yyloc));
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_ILIKE, "!~~*",
-												   (yyvsp[(1) - (6)].node), (Node *) n, (yylsp[(2) - (6)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_ILIKE, "!~~*",
+												   (yyvsp[(1) - (6)].node), (Node *) n, (yylsp[(2) - (6)]).start), (yyloc));
 				;}
     break;
 
@@ -49117,8 +49117,8 @@ yyreduce:
 												 list_make1((yyvsp[(4) - (4)].node)),
 												 COERCE_EXPLICIT_CALL,
 												 (yylsp[(2) - (4)]).start), (yyloc));
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_SIMILAR, "~",
-												   (yyvsp[(1) - (4)].node), (Node *) n, (yylsp[(2) - (4)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_SIMILAR, "~",
+												   (yyvsp[(1) - (4)].node), (Node *) n, (yylsp[(2) - (4)]).start), (yyloc));
 				;}
     break;
 
@@ -49129,8 +49129,8 @@ yyreduce:
 												 list_make2((yyvsp[(4) - (6)].node), (yyvsp[(6) - (6)].node)),
 												 COERCE_EXPLICIT_CALL,
 												 (yylsp[(2) - (6)]).start), (yyloc));
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_SIMILAR, "~",
-												   (yyvsp[(1) - (6)].node), (Node *) n, (yylsp[(2) - (6)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_SIMILAR, "~",
+												   (yyvsp[(1) - (6)].node), (Node *) n, (yylsp[(2) - (6)]).start), (yyloc));
 				;}
     break;
 
@@ -49141,8 +49141,8 @@ yyreduce:
 												 list_make1((yyvsp[(5) - (5)].node)),
 												 COERCE_EXPLICIT_CALL,
 												 (yylsp[(2) - (5)]).start), (yyloc));
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_SIMILAR, "!~",
-												   (yyvsp[(1) - (5)].node), (Node *) n, (yylsp[(2) - (5)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_SIMILAR, "!~",
+												   (yyvsp[(1) - (5)].node), (Node *) n, (yylsp[(2) - (5)]).start), (yyloc));
 				;}
     break;
 
@@ -49153,8 +49153,8 @@ yyreduce:
 												 list_make2((yyvsp[(5) - (7)].node), (yyvsp[(7) - (7)].node)),
 												 COERCE_EXPLICIT_CALL,
 												 (yylsp[(2) - (7)]).start), (yyloc));
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_SIMILAR, "!~",
-												   (yyvsp[(1) - (7)].node), (Node *) n, (yylsp[(2) - (7)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_SIMILAR, "!~",
+												   (yyvsp[(1) - (7)].node), (Node *) n, (yylsp[(2) - (7)]).start), (yyloc));
 				;}
     break;
 
@@ -49305,58 +49305,58 @@ yyreduce:
   case 2054:
 #line 15184 "gram.y"
     {
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_DISTINCT, "=", (yyvsp[(1) - (5)].node), (yyvsp[(5) - (5)].node), (yylsp[(2) - (5)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_DISTINCT, "=", (yyvsp[(1) - (5)].node), (yyvsp[(5) - (5)].node), (yylsp[(2) - (5)]).start), (yyloc));
 				;}
     break;
 
   case 2055:
 #line 15188 "gram.y"
     {
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_NOT_DISTINCT, "=", (yyvsp[(1) - (6)].node), (yyvsp[(6) - (6)].node), (yylsp[(2) - (6)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_NOT_DISTINCT, "=", (yyvsp[(1) - (6)].node), (yyvsp[(6) - (6)].node), (yylsp[(2) - (6)]).start), (yyloc));
 				;}
     break;
 
   case 2056:
 #line 15192 "gram.y"
     {
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_BETWEEN,
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_BETWEEN,
 												   "BETWEEN",
 												   (yyvsp[(1) - (6)].node),
 												   (Node *) list_make2((yyvsp[(4) - (6)].node), (yyvsp[(6) - (6)].node)),
-												   (yylsp[(2) - (6)]).start);
+												   (yylsp[(2) - (6)]).start), (yyloc));
 				;}
     break;
 
   case 2057:
 #line 15200 "gram.y"
     {
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_NOT_BETWEEN,
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_NOT_BETWEEN,
 												   "NOT BETWEEN",
 												   (yyvsp[(1) - (7)].node),
 												   (Node *) list_make2((yyvsp[(5) - (7)].node), (yyvsp[(7) - (7)].node)),
-												   (yylsp[(2) - (7)]).start);
+												   (yylsp[(2) - (7)]).start), (yyloc));
 				;}
     break;
 
   case 2058:
 #line 15208 "gram.y"
     {
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_BETWEEN_SYM,
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_BETWEEN_SYM,
 												   "BETWEEN SYMMETRIC",
 												   (yyvsp[(1) - (6)].node),
 												   (Node *) list_make2((yyvsp[(4) - (6)].node), (yyvsp[(6) - (6)].node)),
-												   (yylsp[(2) - (6)]).start);
+												   (yylsp[(2) - (6)]).start), (yyloc));
 				;}
     break;
 
   case 2059:
 #line 15216 "gram.y"
     {
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_NOT_BETWEEN_SYM,
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_NOT_BETWEEN_SYM,
 												   "NOT BETWEEN SYMMETRIC",
 												   (yyvsp[(1) - (7)].node),
 												   (Node *) list_make2((yyvsp[(5) - (7)].node), (yyvsp[(7) - (7)].node)),
-												   (yylsp[(2) - (7)]).start);
+												   (yylsp[(2) - (7)]).start), (yyloc));
 				;}
     break;
 
@@ -49379,7 +49379,7 @@ yyreduce:
 					else
 					{
 						/* generate scalar IN expression */
-						(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_IN, "=", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start);
+						(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_IN, "=", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc));
 					}
 				;}
     break;
@@ -49400,12 +49400,12 @@ yyreduce:
 						n->operName = NIL;		/* show it's IN not = ANY */
 						n->location = (yylsp[(2) - (4)]).start;
 						/* Stick a NOT on top; must have same parse location */
-						(yyval.node) = makeNotExpr((Node *) n, (yylsp[(2) - (4)]).start);
+						(yyval.node) = nodeExtent(makeNotExpr((Node *) n, (yylsp[(2) - (4)]).start), (yyloc));
 					}
 					else
 					{
 						/* generate scalar NOT IN expression */
-						(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_IN, "<>", (yyvsp[(1) - (4)].node), (yyvsp[(4) - (4)].node), (yylsp[(2) - (4)]).start);
+						(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_IN, "<>", (yyvsp[(1) - (4)].node), (yyvsp[(4) - (4)].node), (yylsp[(2) - (4)]).start), (yyloc));
 					}
 				;}
     break;
@@ -49430,9 +49430,9 @@ yyreduce:
 #line 15281 "gram.y"
     {
 					if ((yyvsp[(3) - (6)].ival) == ANY_SUBLINK)
-						(yyval.node) = (Node *) makeA_Expr(AEXPR_OP_ANY, (yyvsp[(2) - (6)].list), (yyvsp[(1) - (6)].node), (yyvsp[(5) - (6)].node), (yylsp[(2) - (6)]).start);
+						(yyval.node) = nodeExtent((Node *) makeA_Expr(AEXPR_OP_ANY, (yyvsp[(2) - (6)].list), (yyvsp[(1) - (6)].node), (yyvsp[(5) - (6)].node), (yylsp[(2) - (6)]).start), (yyloc));
 					else
-						(yyval.node) = (Node *) makeA_Expr(AEXPR_OP_ALL, (yyvsp[(2) - (6)].list), (yyvsp[(1) - (6)].node), (yyvsp[(5) - (6)].node), (yylsp[(2) - (6)]).start);
+						(yyval.node) = nodeExtent((Node *) makeA_Expr(AEXPR_OP_ALL, (yyvsp[(2) - (6)].list), (yyvsp[(1) - (6)].node), (yyvsp[(5) - (6)].node), (yylsp[(2) - (6)]).start), (yyloc));
 				;}
     break;
 
@@ -49466,9 +49466,9 @@ yyreduce:
   case 2066:
 #line 15309 "gram.y"
     {
-					(yyval.node) = makeNotExpr(makeXmlExpr(IS_DOCUMENT, NULL, NIL,
+					(yyval.node) = nodeExtent(makeNotExpr(makeXmlExpr(IS_DOCUMENT, NULL, NIL,
 												 list_make1((yyvsp[(1) - (4)].node)), (yylsp[(2) - (4)]).start),
-									 (yylsp[(2) - (4)]).start);
+									 (yylsp[(2) - (4)]).start), (yyloc));
 				;}
     break;
 
@@ -49495,22 +49495,22 @@ yyreduce:
   case 2069:
 #line 15329 "gram.y"
     {
-					(yyval.node) = makeNotExpr((Node *) fcExtent(makeFuncCall(SystemFuncName("is_normalized"),
+					(yyval.node) = nodeExtent(makeNotExpr((Node *) fcExtent(makeFuncCall(SystemFuncName("is_normalized"),
 														   list_make1((yyvsp[(1) - (4)].node)),
 														   COERCE_SQL_SYNTAX,
 														   (yylsp[(2) - (4)]).start), (yyloc)),
-									 (yylsp[(2) - (4)]).start);
+									 (yylsp[(2) - (4)]).start), (yyloc));
 				;}
     break;
 
   case 2070:
 #line 15337 "gram.y"
     {
-					(yyval.node) = makeNotExpr((Node *) fcExtent(makeFuncCall(SystemFuncName("is_normalized"),
+					(yyval.node) = nodeExtent(makeNotExpr((Node *) fcExtent(makeFuncCall(SystemFuncName("is_normalized"),
 														   list_make2((yyvsp[(1) - (5)].node), makeStringConst((yyvsp[(4) - (5)].str), (yylsp[(4) - (5)]).start)),
 														   COERCE_SQL_SYNTAX,
 														   (yylsp[(2) - (5)]).start), (yyloc)),
-									 (yylsp[(2) - (5)]).start);
+									 (yylsp[(2) - (5)]).start), (yyloc));
 				;}
     break;
 
@@ -49528,7 +49528,7 @@ yyreduce:
     {
 					JsonFormat *format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
 
-					(yyval.node) = makeNotExpr(makeJsonIsPredicate((yyvsp[(1) - (5)].node), format, (yyvsp[(4) - (5)].ival), (yyvsp[(5) - (5)].boolean), (yylsp[(1) - (5)]).start), (yylsp[(1) - (5)]).start);
+					(yyval.node) = nodeExtent(makeNotExpr(makeJsonIsPredicate((yyvsp[(1) - (5)].node), format, (yyvsp[(4) - (5)].ival), (yyvsp[(5) - (5)].boolean), (yylsp[(1) - (5)]).start), (yylsp[(1) - (5)]).start), (yyloc));
 				;}
     break;
 
@@ -49562,95 +49562,95 @@ yyreduce:
 
   case 2076:
 #line 15411 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, (yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, (yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start), (yyloc)); ;}
     break;
 
   case 2077:
 #line 15413 "gram.y"
-    { (yyval.node) = doNegate((yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start); ;}
+    { (yyval.node) = nodeExtent(doNegate((yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start), (yyloc)); ;}
     break;
 
   case 2078:
 #line 15415 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "+", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2079:
 #line 15417 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "-", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "-", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2080:
 #line 15419 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "*", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "*", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2081:
 #line 15421 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "/", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "/", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2082:
 #line 15423 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "%", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "%", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2083:
 #line 15425 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "^", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "^", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2084:
 #line 15427 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "<", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "<", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2085:
 #line 15429 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, ">", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, ">", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2086:
 #line 15431 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "=", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2087:
 #line 15433 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "<=", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "<=", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2088:
 #line 15435 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, ">=", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, ">=", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2089:
 #line 15437 "gram.y"
-    { (yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_OP, "<>", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_OP, "<>", (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2090:
 #line 15439 "gram.y"
-    { (yyval.node) = (Node *) makeA_Expr(AEXPR_OP, (yyvsp[(2) - (3)].list), (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeA_Expr(AEXPR_OP, (yyvsp[(2) - (3)].list), (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node), (yylsp[(2) - (3)]).start), (yyloc)); ;}
     break;
 
   case 2091:
 #line 15441 "gram.y"
-    { (yyval.node) = (Node *) makeA_Expr(AEXPR_OP, (yyvsp[(1) - (2)].list), NULL, (yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start); ;}
+    { (yyval.node) = nodeExtent((Node *) makeA_Expr(AEXPR_OP, (yyvsp[(1) - (2)].list), NULL, (yyvsp[(2) - (2)].node), (yylsp[(1) - (2)]).start), (yyloc)); ;}
     break;
 
   case 2092:
 #line 15443 "gram.y"
     {
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_DISTINCT, "=", (yyvsp[(1) - (5)].node), (yyvsp[(5) - (5)].node), (yylsp[(2) - (5)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_DISTINCT, "=", (yyvsp[(1) - (5)].node), (yyvsp[(5) - (5)].node), (yylsp[(2) - (5)]).start), (yyloc));
 				;}
     break;
 
   case 2093:
 #line 15447 "gram.y"
     {
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_NOT_DISTINCT, "=", (yyvsp[(1) - (6)].node), (yyvsp[(6) - (6)].node), (yylsp[(2) - (6)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_NOT_DISTINCT, "=", (yyvsp[(1) - (6)].node), (yyvsp[(6) - (6)].node), (yylsp[(2) - (6)]).start), (yyloc));
 				;}
     break;
 
@@ -49665,9 +49665,9 @@ yyreduce:
   case 2095:
 #line 15456 "gram.y"
     {
-					(yyval.node) = makeNotExpr(makeXmlExpr(IS_DOCUMENT, NULL, NIL,
+					(yyval.node) = nodeExtent(makeNotExpr(makeXmlExpr(IS_DOCUMENT, NULL, NIL,
 												 list_make1((yyvsp[(1) - (4)].node)), (yylsp[(2) - (4)]).start),
-									 (yylsp[(2) - (4)]).start);
+									 (yylsp[(2) - (4)]).start), (yyloc));
 				;}
     break;
 
@@ -50324,7 +50324,7 @@ yyreduce:
   case 2154:
 #line 15972 "gram.y"
     {
-					(yyval.node) = (Node *) makeSimpleA_Expr(AEXPR_NULLIF, "=", (yyvsp[(3) - (6)].node), (yyvsp[(5) - (6)].node), (yylsp[(1) - (6)]).start);
+					(yyval.node) = nodeExtent((Node *) makeSimpleA_Expr(AEXPR_NULLIF, "=", (yyvsp[(3) - (6)].node), (yyvsp[(5) - (6)].node), (yylsp[(1) - (6)]).start), (yyloc));
 				;}
     break;
 
@@ -52979,27 +52979,42 @@ nodeExtent(Node *n, YYLTYPE loc)
 	 * passes it explicitly - and a caller slicing location..location_end there
 	 * would otherwise read from a negative offset.
 	 */
+	/*
+	 * Operator- and keyword-located nodes: location points at the operator, not
+	 * at the start of the construct, so the rule begins earlier than the node
+	 * does.  `a = 1` locates on the `=`, `a AND b` on the AND, and the desugared
+	 * calls locate on their keyword.  Record the whole construct separately
+	 * rather than moving location, which would change where errors are reported.
+	 * The guard means a node that already starts the rule - NOT, whose maker is
+	 * handed @1 - keeps just the plain pair.
+	 */
+#define setExtentWithOuter(node) \
+	do { \
+		(node)->location_end = (node)->location < 0 ? -1 : loc.end; \
+		if ((node)->location >= 0 && loc.start >= 0 && loc.start != (node)->location) \
+		{ \
+			(node)->outer_location = loc.start; \
+			(node)->outer_location_end = loc.end; \
+		} \
+	} while (0)
+
 	switch (nodeTag(n))
 	{
 		case T_FuncCall:
-		{
-			FuncCall   *fc = (FuncCall *) n;
-
-			fc->location_end = fc->location < 0 ? -1 : loc.end;
-
-			/*
-			 * Operator-shaped constructs desugar into a call whose location is the
-			 * keyword, so the rule starts earlier than the node does. Record the
-			 * whole construct separately rather than moving location, which would
-			 * change where errors are reported.
-			 */
-			if (fc->location >= 0 && loc.start >= 0 && loc.start != fc->location)
-			{
-				fc->outer_location = loc.start;
-				fc->outer_location_end = loc.end;
-			}
+			setExtentWithOuter((FuncCall *) n);
 			break;
-		}
+		/*
+		 * Both fold: the grammar flattens `a AND b AND c` onto one BoolExpr and
+		 * returns the same pointer, so the extent has to widen on every fold
+		 * rather than being set once at creation.  Re-stamping here does that,
+		 * because the wrapper sits on the reduction, not on the maker.
+		 */
+		case T_A_Expr:
+			setExtentWithOuter((A_Expr *) n);
+			break;
+		case T_BoolExpr:
+			setExtentWithOuter((BoolExpr *) n);
+			break;
 		case T_ColumnRef:
 			((ColumnRef *) n)->location_end =
 				((ColumnRef *) n)->location < 0 ? -1 : loc.end;
@@ -53015,6 +53030,7 @@ nodeExtent(Node *n, YYLTYPE loc)
 		default:
 			break;
 	}
+#undef setExtentWithOuter
 	return n;
 }
 

@@ -571,6 +571,9 @@ message BoolExpr
   BoolExprType boolop = 2 [json_name="boolop"];
   repeated Node args = 3 [json_name="args"];
   int32 location = 4 [json_name="location"];
+  int32 location_end = 5 [json_name="location_end"];
+  int32 outer_location = 6 [json_name="outer_location"];
+  int32 outer_location_end = 7 [json_name="outer_location_end"];
 }
 
 message SubLink
@@ -1087,6 +1090,9 @@ message A_Expr
   Node lexpr = 3 [json_name="lexpr"];
   Node rexpr = 4 [json_name="rexpr"];
   int32 location = 5 [json_name="location"];
+  int32 location_end = 6 [json_name="location_end"];
+  int32 outer_location = 7 [json_name="outer_location"];
+  int32 outer_location_end = 8 [json_name="outer_location_end"];
 }
 
 message TypeCast
