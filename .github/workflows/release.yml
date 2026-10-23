@@ -44,6 +44,8 @@ jobs:
         with:
           files: ${{ steps.names.outputs.zipfile }}
           tag_name: ${{ github.event.release.tag_name || github.ref_name }}
+          # A -debug tag's binaries go to its draft release, which has to exist before the tag is pushed.
+          draft: ${{ contains(github.event.release.tag_name || github.ref_name, '-debug') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -78,6 +80,8 @@ jobs:
         with:
           files: ${{ steps.names.outputs.zipfile }}
           tag_name: ${{ github.event.release.tag_name || github.ref_name }}
+          # A -debug tag's binaries go to its draft release, which has to exist before the tag is pushed.
+          draft: ${{ contains(github.event.release.tag_name || github.ref_name, '-debug') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -117,5 +121,7 @@ jobs:
         with:
           files: ${{ steps.names.outputs.zipfile }}
           tag_name: ${{ github.event.release.tag_name || github.ref_name }}
+          # A -debug tag's binaries go to its draft release, which has to exist before the tag is pushed.
+          draft: ${{ contains(github.event.release.tag_name || github.ref_name, '-debug') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
